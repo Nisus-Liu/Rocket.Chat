@@ -11,11 +11,22 @@ const events = ['mousemove', 'mousedown', 'touchend', 'touchstart', 'keypress'];
  * @param options - An optional configuration object.
  * @param options.time - The time in milliseconds to consider the user idle. Defaults to 600000 ms (10 minutes).
  * @param options.awayOnWindowBlur - A boolean flag to trigger the callback when the window loses focus. Defaults to false.
+ * @param options.onActive - The callback function to be called when the user is not idle.
  *
  */
 
-export const useIdleDetection = (callback: () => void, { time = 600000, awayOnWindowBlur = false } = {}) => {
+export const useIdleDetection = (
+	callback: () => void,
+	{
+		time = 600000,
+		awayOnWindowBlur = false,
+		onActive = () => {
+			null;
+		},
+	} = {},
+) => {
 	const stableCallback = useEffectEvent(callback);
+	const stableActiveCallback = useEffectEvent(onActive);
 
 	useEffect(() => {
 		let interval: ReturnType<typeof setTimeout>;
@@ -29,11 +40,13 @@ export const useIdleDetection = (callback: () => void, { time = 600000, awayOnWi
 		handleIdle();
 
 		events.forEach((key) => document.addEventListener(key, handleIdle));
+		events.forEach((key) => document.addEventListener(key, stableActiveCallback));
 		return () => {
 			clearTimeout(interval);
 			events.forEach((key) => document.removeEventListener(key, handleIdle));
+			events.forEach((key) => document.removeEventListener(key, stableActiveCallback));
 		};
-	}, [stableCallback, time]);
+	}, [stableActiveCallback, stableCallback, time]);
 
 	useEffect(() => {
 		if (!awayOnWindowBlur) {
