@@ -486,6 +486,7 @@ describe('Settings', () => {
 			...storedSetting,
 			value: true,
 			enterprise: true,
+			modules: ['federation'],
 			invalidValue: '',
 		};
 
@@ -508,7 +509,13 @@ describe('Settings', () => {
 		expect(Settings.insertCalls).to.be.equal(1);
 		Settings.insertCalls = 0;
 
-		const settingFromCodeFaked = { ...testSetting, value: Date.now().toString(), enterprise: true, invalidValue: '' };
+		const settingFromCodeFaked = {
+			...testSetting,
+			value: Date.now().toString(),
+			enterprise: true,
+			modules: ['federation'],
+			invalidValue: '',
+		};
 
 		process.env[`OVERWRITE_SETTING_${testSetting._id}`] = Date.now().toString();
 
