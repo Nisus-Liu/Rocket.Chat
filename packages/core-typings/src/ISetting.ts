@@ -107,6 +107,7 @@ export interface ISettingGroup {
 export interface ISettingEnterprise extends ISettingBase {
 	enterprise: true;
 	invalidValue: SettingValue;
+	modules: Array<string>;
 }
 
 export interface ISettingColor extends ISettingBase {

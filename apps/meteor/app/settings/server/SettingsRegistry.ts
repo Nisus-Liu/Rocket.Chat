@@ -1,4 +1,4 @@
-import type { ISetting, ISettingGroup, Optional, SettingValue } from '@rocket.chat/core-typings';
+import type { ISetting, ISettingEnterprise, ISettingGroup, Optional, SettingValue } from '@rocket.chat/core-typings';
 import { isSettingEnterprise } from '@rocket.chat/core-typings';
 import { Emitter } from '@rocket.chat/emitter';
 import type { ISettingsModel } from '@rocket.chat/model-typings';
@@ -83,6 +83,18 @@ export const compareSettings = compareSettingsIgnoringKeys([
 	'_updatedAt',
 ]);
 
+const checkMandatoryEnterpriseFields = (setting: Partial<ISettingEnterprise>) => {
+	if (!('invalidValue' in setting)) {
+		SystemLogger.error(`Enterprise setting ${setting._id} is missing the invalidValue option`);
+		throw new Error(`Enterprise setting ${setting._id} is missing the invalidValue option`);
+	}
+
+	if (!('modules' in setting)) {
+		SystemLogger.error(`Enterprise setting ${setting._id} is missing the modules option`);
+		throw new Error(`Enterprise setting ${setting._id} is missing the modules option`);
+	}
+};
+
 export class SettingsRegistry {
 	private model: ISettingsModel;
 
@@ -131,9 +143,8 @@ export class SettingsRegistry {
 			wizardRequiredSettings,
 		);
 
-		if (isSettingEnterprise(settingFromCode) && !('invalidValue' in settingFromCode)) {
-			SystemLogger.error(`Enterprise setting ${_id} is missing the invalidValue option`);
-			throw new Error(`Enterprise setting ${_id} is missing the invalidValue option`);
+		if (isSettingEnterprise(settingFromCode)) {
+			checkMandatoryEnterpriseFields(settingFromCode);
 		}
 
 		const settingFromCodeOverwritten = overwriteSetting(settingFromCode);
