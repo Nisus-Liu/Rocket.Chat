@@ -1,13 +1,12 @@
 import type { CountDocumentsOptions } from 'mongodb';
 
 import type { Cursor, Options, Selector, DispatchTransform } from './Cursor';
-import type { IIdMap } from './IdMap';
+import type { IIdMap } from './IIdMap';
 import type { Query } from './Query';
 
 export interface ILocalCollection<T extends { _id: string }> {
 	_docs: IIdMap<T['_id'], T>;
 	_recomputeResults(query: Query<T, Options<T>, any>, snapshot?: IIdMap<T['_id'], T> | T[]): void;
-	next_qid: number;
 	queries: Record<string, Query<T, Options<T>, any>>;
 	paused: boolean;
 	countDocuments(selector?: Selector<T>, options?: CountDocumentsOptions): Promise<number>;

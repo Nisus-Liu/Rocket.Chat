@@ -1,13 +1,15 @@
 import { EJSON } from 'meteor/ejson';
 import { Meteor } from 'meteor/meteor';
 import type { CountDocumentsOptions } from 'mongodb';
+import type { StoreApi, UseBoundStore } from 'zustand';
 
 import type { Options, Selector } from './Cursor';
 import { Cursor } from './Cursor';
 import { DiffSequence } from './DiffSequence';
+import type { IIdMap } from './IIdMap';
 import type { ILocalCollection } from './ILocalCollection';
-import type { IIdMap } from './IdMap';
 import { IdMap } from './IdMap';
+import { IdMapOverStore } from './IdMapOverStore';
 import { Matcher } from './Matcher';
 import type { ObserveCallbacks } from './ObserveCallbacks';
 import type { ObserveChangesCallbacks } from './ObserveChangesCallbacks';
@@ -29,11 +31,11 @@ import {
 // LocalCollection: a set of documents that supports queries and modifiers.
 export class LocalCollection<T extends { _id: string }> implements ILocalCollection<T> {
 	// _id -> document (also containing id)
-	readonly _docs: IIdMap<T['_id'], T> = new IdMap<T['_id'], T>();
+	readonly _docs: IIdMap<T['_id'], T>;
 
 	readonly _observeQueue = new Meteor._SynchronousQueue();
 
-	next_qid = 1; // live query id generator
+	protected nextQueryId = 1; // live query id generator
 
 	// qid -> live query object. keys:
 	//  ordered: bool. ordered queries have addedBefore/movedBefore callbacks.
@@ -49,6 +51,22 @@ export class LocalCollection<T extends { _id: string }> implements ILocalCollect
 	private _savedOriginals: IIdMap<T['_id'], T | undefined> | null = null;
 
 	paused = false;
+
+	constructor(store: UseBoundStore<StoreApi<{ records: T[] }>>) {
+		this._docs = new IdMapOverStore(store, () => {
+			for (const qid of Object.keys(this.queries)) {
+				const query = this.queries[qid];
+
+				if (query) {
+					this._recomputeResults(query);
+				}
+			}
+		});
+	}
+
+	claimNextQueryId() {
+		return this.nextQueryId++;
+	}
 
 	countDocuments(selector?: Selector<T>, options?: CountDocumentsOptions) {
 		return this.find(selector ?? {}, options).countAsync();

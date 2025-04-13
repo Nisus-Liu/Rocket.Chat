@@ -24,47 +24,10 @@ export class MinimongoCollection<T extends { _id: string }> extends Mongo.Collec
 		filter: (predicate: (record: T) => boolean) => get().records.filter(predicate),
 	}));
 
-	protected _collection: ILocalCollection<T> = new LocalCollection<T>();
+	protected _collection: ILocalCollection<T> = new LocalCollection<T>(this.use);
 
 	constructor() {
 		super(null);
-
-		let internal = false;
-
-		this.find({}).observe({
-			added: (record) => {
-				internal = true;
-				this.use.setState((state) => ({ records: [...state.records, record] }));
-			},
-			changed: (record) => {
-				internal = true;
-				this.use.setState((state) => {
-					const records = [...state.records];
-					const index = records.findIndex((r) => r._id === record._id);
-					if (index !== -1) {
-						records[index] = { ...record };
-					}
-					return { records };
-				});
-			},
-			removed: (record) => {
-				internal = true;
-				this.use.setState((state) => ({
-					records: state.records.filter((r) => r._id !== record._id),
-				}));
-			},
-		});
-
-		this.use.subscribe((state) => {
-			if (internal) {
-				internal = false;
-				return;
-			}
-			this._collection._docs.clear();
-			for (const record of state.records) {
-				this._collection._docs.set(record._id, record);
-			}
-		});
 	}
 
 	get state() {

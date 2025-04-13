@@ -1,5 +1,5 @@
 import type { SortSpecifier } from './Cursor';
-import type { IIdMap } from './IdMap';
+import type { IIdMap } from './IIdMap';
 import { LocalCollection } from './LocalCollection';
 import { Matcher } from './Matcher';
 import { expandArraysInBranches, hasOwn, makeLookupFunction } from './common';

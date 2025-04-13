@@ -2,7 +2,7 @@ import { EJSON } from 'meteor/ejson';
 import { Meteor } from 'meteor/meteor';
 import type { Filter, Hint, Sort } from 'mongodb';
 
-import type { IIdMap } from './IdMap';
+import type { IIdMap } from './IIdMap';
 import { IdMap } from './IdMap';
 import { LocalCollection } from './LocalCollection';
 import { Matcher } from './Matcher';
@@ -358,7 +358,7 @@ export class Cursor<T extends { _id: string }, TOptions extends Options<T>, TPro
 		// Non-reactive queries call added[Before] and then never call anything
 		// else.
 		if (this.reactive) {
-			qid = this.collection.next_qid++;
+			qid = this.collection.claimNextQueryId();
 			this.collection.queries[qid] = query;
 		}
 
