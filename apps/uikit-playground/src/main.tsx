@@ -8,7 +8,7 @@ import { Provider } from './Context';
 import PersistStore from './Components/PersistStore/PersistStore';
 import './index.css';
 
-const rootDiv = document.getElementById('root');
+const rootDiv = document.getElementById('root'); // react 挂载的root dom
 
 if (!rootDiv) {
   throw new Error('Root div not found');

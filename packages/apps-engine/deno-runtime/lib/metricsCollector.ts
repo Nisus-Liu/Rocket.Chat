@@ -1,5 +1,6 @@
-import { writeAll } from 'https://deno.land/std@0.216.0/io/write_all.ts';
-import { Queue } from './messenger.ts';
+// import { writeAll } from 'https://deno.land/std@0.216.0/io/write_all.ts';
+import { writeAll } from "/root/.cache/deno/local/std/io/write_all.ts"; // ::fix上面网络问题
+// import { Queue } from './messenger.ts';
 
 export function collectMetrics() {
     return {

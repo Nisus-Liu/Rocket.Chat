@@ -22,7 +22,7 @@ export const useDiscussionsList = (
 
 	const discussionsList = useMemo(() => new DiscussionsList(options), [options]);
 
-	const getDiscussions = useEndpoint('GET', '/v1/chat.getDiscussions');
+	const getDiscussions = useEndpoint('GET', '/v1/chat.getDiscussions'); // :: useCallback(调用函数)
 
 	const fetchMessages = useCallback(
 		async (start: number, end: number) => {

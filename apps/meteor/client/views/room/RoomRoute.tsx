@@ -16,7 +16,7 @@ type RoomRouteProps = {
 const RoomRoute = ({ extractOpenRoomParams }: RoomRouteProps) => {
 	const router = useRouter();
 	const [params, setParams] = useState(() => extractOpenRoomParams(router.getRouteParameters()));
-
+	console.log('==RoomRoute params', router.getRouteParameters(), params);
 	const isEmbeddedLayout = useEmbeddedLayout();
 
 	useLayoutEffect(
@@ -27,6 +27,7 @@ const RoomRoute = ({ extractOpenRoomParams }: RoomRouteProps) => {
 		[extractOpenRoomParams, router],
 	);
 
+	console.log('==isEmbeddedLayout', isEmbeddedLayout);
 	if (isEmbeddedLayout) {
 		return <RoomOpenerEmbedded {...params} />;
 	}

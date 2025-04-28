@@ -22,7 +22,8 @@
 		"paths": {
 			/* Support absolute /imports/* with a leading '/' */
 			"/*": ["*"],
-			"meteor/*": ["./node_modules/@types/meteor/*", ".meteor/local/types/packages.d.ts"]
+			"meteor/*": ["./node_modules/@types/meteor/*", ".meteor/local/types/packages.d.ts"],
+			"@rocket.chat/*": ["../../packages/*/src"] // :: 为了让 @rocket.chat/xxx 支持编辑器跳转
 		},
 		"preserveSymlinks": true
 

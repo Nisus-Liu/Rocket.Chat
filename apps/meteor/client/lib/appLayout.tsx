@@ -15,7 +15,7 @@ class AppLayoutSubscription extends Emitter<{ update: void }> {
 
 	getSnapshot = (): AppLayoutDescriptor => this.descriptor;
 
-	subscribe = (onStoreChange: () => void): (() => void) => this.on('update', onStoreChange);
+	subscribe = (onStoreChange: () => void): (() => void) => this.on('update', onStoreChange); // :: onStoreChange 可能是 react useSyncExternalStore 传入用于订阅外部(这里的this)数据变化
 
 	setCurrentValue(descriptor: AppLayoutDescriptor): void {
 		this.descriptor = descriptor;

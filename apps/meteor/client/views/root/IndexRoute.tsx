@@ -5,9 +5,9 @@ import { useEffect } from 'react';
 import PageLoading from './PageLoading';
 
 const IndexRoute = () => {
-	const router = useRouter();
-	const uid = useUserId();
-	const user = useUser();
+	const router = useRouter(); // :: RouterContext apps\meteor\client\providers\RouterProvider.tsx
+	const uid = useUserId(); // :: UserContext.userId
+	const user = useUser(); // :: UserContext
 
 	useEffect(() => {
 		if (!uid) {
@@ -19,6 +19,7 @@ const IndexRoute = () => {
 			setTimeout(async () => {
 				if (user?.defaultRoom) {
 					const room = user.defaultRoom.split('/') as [routeName: RouteName, routeParam: string];
+					console.log('==user.defaultRoom', user.defaultRoom);
 					router.navigate({
 						name: room[0],
 						params: { name: room[1] },

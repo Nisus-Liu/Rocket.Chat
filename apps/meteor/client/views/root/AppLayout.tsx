@@ -62,7 +62,7 @@ const AppLayout = () => {
 	useLoginViaQuery();
 	useLoadMissedMessages();
 
-	const layout = useSyncExternalStore(appLayout.subscribe, appLayout.getSnapshot);
+	const layout = useSyncExternalStore(appLayout.subscribe, appLayout.getSnapshot); // :: React 18 的 useSyncExternalStore Hook，用于安全地订阅外部数据源（这里是 appLayout 的状态）  自动同步 appLayout 状态, 更新组件重新渲染
 
 	return (
 		<Suspense fallback={<PageLoading />}>

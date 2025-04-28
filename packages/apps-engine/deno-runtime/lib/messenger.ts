@@ -1,4 +1,5 @@
-import { writeAll } from "https://deno.land/std@0.216.0/io/write_all.ts";
+// import { writeAll } from "https://deno.land/std@0.216.0/io/write_all.ts";
+import { writeAll } from "/root/.cache/deno/local/std/io/write_all.ts"; // ::fix上面网络问题
 
 import * as jsonrpc from 'jsonrpc-lite';
 

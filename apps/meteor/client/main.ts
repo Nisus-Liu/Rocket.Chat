@@ -15,4 +15,4 @@ import('./polyfills')
 	.then(() => import('./importPackages'))
 	.then(() => import('./startup'))
 	.then(() => import('./omnichannel'))
-	.then(() => Promise.all([import('./views/admin'), import('./views/marketplace'), import('./views/account')]));
+	.then(() => Promise.all([import('./views/admin'), import('./views/marketplace'), import('./views/account'), import('./views/topics')]));
