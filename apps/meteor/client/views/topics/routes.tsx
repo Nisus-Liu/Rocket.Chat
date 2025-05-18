@@ -8,6 +8,10 @@ declare module '@rocket.chat/ui-contexts' {
 			pathname: '/topics';
 			pattern: '/topics';
 		};
+		'topics-home': {
+			pathname: '/topics/home';
+			pattern: '/topics/home';
+		};
 		'topics-detail': {
 			pathname: `/topics/${string}`;
 			pattern: '/topics/:id';
@@ -21,7 +25,12 @@ export const topicsRoute = createRouteGroup(
 	lazy(() => import('./TopicsRouter')),
 );
 
-topicsRoute('', {
-	name: 'topics-index',
+topicsRoute('/home', {
+	name: 'topics-home',
 	component: lazy(() => import('./TopicsPage')),
+});
+
+topicsRoute('/:id', {
+	name: 'topics-detail',
+	component: lazy(() => import('./TopicDetailPage')),
 });

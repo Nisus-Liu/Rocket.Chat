@@ -14,17 +14,17 @@ const TopicsRouter = ({ children }: TopicsRouterProps): ReactElement => {
 	useEffect(
 		() =>
 			router.subscribeToRouteChange(() => {
-				console.log('==router', router);
-				// if (router.getRouteName() !== 'topics-index') {
-				// 	return;
-				// }
-				//
-				// router.navigate({ name: 'omnichannel-current-chats' }, { replace: true });
+				console.log('==router', router.getRouteName());
+				if (router.getRouteName() !== 'topics-index') {
+					return;
+				}
+				router.navigate({ name: 'topics-home' }, { replace: true });
 			}),
 		[router],
 	);
 
 	if (!children) {
+		// console.log('==children none')
 		return <PageSkeleton />;
 	}
 

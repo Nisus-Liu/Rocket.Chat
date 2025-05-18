@@ -1,31 +1,37 @@
 import { Box, Margins, Pagination, Table, TableHead, TableRow, TableCell, TableBody } from '@rocket.chat/fuselage';
-import { useTranslation } from '@rocket.chat/ui-contexts';
+import { useTranslation, useRouter } from '@rocket.chat/ui-contexts';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { Page, PageContent, PageHeader } from '../../components/Page';
-import { useEndpointData } from '../../hooks/useEndpointData';
-import { AsyncStatePhase } from '../../lib/asyncState';
+import { useEndpoint } from '@rocket.chat/ui-contexts';
 
 const TopicsPage = () => {
 	const t = useTranslation();
+	const router = useRouter();
 	const [current, setCurrent] = useState(0);
 	const [itemsPerPage, setItemsPerPage] = useState(25);
 
-	const {
-		value: data,
-		phase: state,
-		reload,
-	} = useEndpointData('/v1/topics.list', {
-		params: {
-			offset: current,
-			count: itemsPerPage,
-			sort: { ts: -1 },
+	const getDlmList = useEndpoint('GET', '/v1/topics.discussion.list');
+
+	const { data, isLoading } = useQuery({
+		queryKey: ['topics', current, itemsPerPage],
+		queryFn: async () => {
+			const result = await getDlmList({
+				offset: current,
+				count: itemsPerPage,
+				sort:`{ "ts": -1 }`,
+			});
+			return result;
 		},
 	});
 
-	const handleClick = (topicId: string) => {
-		// TODO: 实现点击话题跳转到详情页
-		console.log('Clicked topic:', topicId);
+	const handleClick = (topicId: string, drid: string) => { // p1: 话题消息_id, p2: 话题room id
+		router.navigate({
+			name: 'topics-detail',
+			params: { id: topicId },
+			search: { drid },
+		});
 	};
 
 	return (
@@ -39,28 +45,48 @@ const TopicsPage = () => {
 								<TableRow>
 									<TableCell>{t('Title')}</TableCell>
 									<TableCell>{t('Author')}</TableCell>
-									<TableCell>{t('Replies')}</TableCell>
+									<TableCell>参与人</TableCell>
 									<TableCell>{t('Last_Message')}</TableCell>
+									<TableCell>回复数</TableCell>
 								</TableRow>
 							</TableHead>
 							<TableBody>
-								{state === AsyncStatePhase.LOADING && (
+								{isLoading && (
 									<TableRow>
 										<TableCell colSpan={4}>{t('Loading')}</TableCell>
 									</TableRow>
 								)}
-								{state === AsyncStatePhase.RESOLVED &&
+								{!isLoading &&
 									data?.topics?.map((topic) => (
-										<TableRow key={topic._id} action onClick={() => handleClick(topic._id)}>
+										<TableRow key={topic._id} action onClick={() => handleClick(topic._id, topic.drid)}>
 											<TableCell>{topic.title}</TableCell>
-											<TableCell>{topic.u?.username}</TableCell>
-											<TableCell>{topic.replies}</TableCell>
+											<TableCell>{topic.u?.name}</TableCell>
+											<TableCell>
+												{topic.replies?.length > 0 ? (
+													<Box display="flex" flexWrap="wrap" gap="4px">
+													{topic.replies.map((reply, index) => (
+														<Box
+														key={index}
+														bg="status-info"
+														borderRadius="4px"
+														paddingInline="8px"
+														fontSize="12px"
+														>
+														{reply}
+														</Box>
+													))}
+													</Box>
+												) : (
+													'No replies'
+												)}
+											</TableCell>
 											<TableCell>{new Date(topic.ts).toLocaleString()}</TableCell>
+											<TableCell>{topic.dcount}</TableCell>
 										</TableRow>
 									))}
 							</TableBody>
 						</Table>
-						{state === AsyncStatePhase.RESOLVED && (
+						{!isLoading && (
 							<Pagination
 								count={data?.total || 0}
 								current={current}

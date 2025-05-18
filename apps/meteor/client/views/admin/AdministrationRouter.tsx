@@ -36,6 +36,7 @@ const AdministrationRouter = ({ children }: AdministrationRouterProps): ReactEle
 				}
 
 				const defaultRoutePath = getAdminSidebarItems().find(firstSidebarPage)?.href ?? '/admin/workspace';
+				console.log('==defaultRoutePath', defaultRoutePath);
 
 				if (isGoRocketChatLink(defaultRoutePath)) {
 					window.open(defaultRoutePath, '_blank');
