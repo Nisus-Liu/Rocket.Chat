@@ -33,7 +33,7 @@ interface TopicDetail {
 	total: number;
 }
 
-const COMMENTS_PER_PAGE = 10;
+const COMMENTS_PER_PAGE = 2;
 
 const TopicDetailPage = () => {
 	const t = useTranslation();
@@ -64,7 +64,7 @@ const TopicDetailPage = () => {
 
 	// 获取话题详情
 	const { data, isLoading, refetch } = useQuery({
-		queryKey: ['topic', topicId, currPageOffset1, currPageOffset2, direction, limit],
+		queryKey: ['topic', topicId, currPageOffset1, currPageOffset2, direction, limit, lastUpdate],
 		queryFn: async () => {
 			const result = await getTopicDetail({
 				topicId,
@@ -72,7 +72,7 @@ const TopicDetailPage = () => {
 				offset1: currPageOffset1 || undefined,
 				offset2: currPageOffset2 || undefined,
 				direction,
-				limit,
+				limit: limit,
 			});
 			return result;
 		},
@@ -104,6 +104,7 @@ const TopicDetailPage = () => {
 		setDirection('first');
 		setCurrPageOffset1(null);
 		setCurrPageOffset2(null);
+		setLastUpdate(Date.now());
 	};
 
 	const handlePrevPage = () => {
@@ -113,6 +114,7 @@ const TopicDetailPage = () => {
 		setCurrPageOffset1(new Date(firstOne.ts).getTime());
 		setCurrPageOffset2(new Date(lastOne.ts).getTime());
 		setDirection('prev');
+		setLastUpdate(Date.now());
 	};
 
 	const handleNextPage = () => {
@@ -122,13 +124,12 @@ const TopicDetailPage = () => {
 		setCurrPageOffset1(new Date(firstOne.ts).getTime());
 		setCurrPageOffset2(new Date(lastOne.ts).getTime());
 		setDirection('next');
+		setLastUpdate(Date.now());
 	};
 
 	// 处理刷新
 	const handleRefresh = async () => {
-		const currentTime = Date.now();
-		setLastUpdate(currentTime);
-		await refetch();
+		setLastUpdate(Date.now());
 	};
 
 	// 处理发表评论
@@ -161,10 +162,10 @@ const TopicDetailPage = () => {
 				title={topic?.title}
 				onClickBack={() => router.navigate({ name: 'topics-index' })}
 			>
-				<Box data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
-					<Icon name='refresh' size='x16' marginInlineEnd={4} />
-					{t('Refresh')}
-				</Box>
+					<Box data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
+						<Icon name='refresh' size='x16' marginInlineEnd={4} />
+						{t('Refresh')}
+					</Box>
 			</PageHeader>
 			<PageContent>
 				<Margins block="x16">
