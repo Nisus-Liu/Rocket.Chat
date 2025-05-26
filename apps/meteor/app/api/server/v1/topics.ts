@@ -5,6 +5,7 @@ import { SortDirection } from 'mongodb';
 
 import { API } from '../api';
 import { getPaginationItems } from '../helpers/getPaginationItems';
+import { executeSendMessage } from '../../../lib/server/methods/sendMessage';
 
 declare module '@rocket.chat/rest-typings' {
 	// eslint-disable-next-line @typescript-eslint/naming-convention
@@ -533,37 +534,20 @@ API.v1.addRoute(
 				throw new Meteor.Error('error-invalid-topic', 'Invalid topic');
 			}
 
-			// 创建新消息
-			const msg = {
-				rid: topic.drid, // 后续消息, rid 指向频道或讨论的id (drid)
+			// 使用 executeSendMessage 发送消息
+			const result = await executeSendMessage(user._id, {
+				rid: topic.drid,
 				msg: message,
-				ts: new Date(),
-				u: {
-					_id: user._id,
-					name: user.name,
-					username: user.username,
-				}
-			};
-
-			// 如果是回复，添加到原消息的 replies 数组
-			// if (replyTo) {
-			// 	await Messages.updateOne(
-			// 		{ _id: replyTo },
-			// 		{ $push: { replies: msg } }
-			// 	);
-			// } else {
-			// 	// 否则作为新评论插入
-			// 	await Messages.insertOne(msg);
-			// }
-			await Messages.insertOne(msg);
+				...(replyTo && { tmid: replyTo })
+			});
 
 			return API.v1.success({
 				success: true,
 				comment: {
-					_id: msg._id,
-					msg: msg.msg,
-					ts: msg.ts,
-					u: msg.u
+					_id: result._id,
+					msg: result.msg,
+					ts: result.ts,
+					u: result.u
 				}
 			});
 		}

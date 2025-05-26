@@ -6,6 +6,10 @@ import { useState } from 'react';
 import { Page, PageContent, PageHeader } from '../../components/Page';
 import { useEndpoint } from '@rocket.chat/ui-contexts';
 import { useToastMessageDispatch } from '@rocket.chat/ui-contexts';
+import { useChat } from '../room/contexts/ChatContext';
+import type { IMessage } from '@rocket.chat/core-typings';
+import { sdk } from '../../../app/utils/client/lib/SDKClient';
+
 
 interface Comment {
 	_id: string;
@@ -59,8 +63,6 @@ const TopicDetailPage = () => {
 
 	// 获取话题详情的接口
 	const getTopicDetail = useEndpoint('GET', '/v1/topics.discussion.detail');
-	// 发表评论的接口
-	const postComment = useEndpoint('POST', '/v1/topics.discussion.comment');
 
 	// 获取话题详情
 	const { data, isLoading, refetch } = useQuery({
@@ -79,13 +81,16 @@ const TopicDetailPage = () => {
 		enabled: !!topicId,
 	});
 
+	const chat = useChat();
 	// 发表评论的mutation
 	const { mutate: submitComment } = useMutation({
-		mutationFn: async (message: string) => {
-			await postComment({
-				topicId,
-				message,
-			});
+		mutationFn: async (text: string) => {
+			const message = {
+				rid: drid,
+				msg: text,
+			} as IMessage
+			// 使用 sdk.call('sendMessage') 发送消息
+			await sdk.call('sendMessage', message);
 		},
 		onSuccess: () => {
 			setNewComment('');
@@ -107,24 +112,22 @@ const TopicDetailPage = () => {
 		setLastUpdate(Date.now());
 	};
 
-	const handlePrevPage = () => {
+	const handleChangePage = (direction: 'prev' | 'next') => {
 		if (!data?.topic?.comments?.length) return;
 		const firstOne = data.topic.comments[0];
 		const lastOne = data.topic.comments[data.topic.comments.length - 1];
 		setCurrPageOffset1(new Date(firstOne.ts).getTime());
 		setCurrPageOffset2(new Date(lastOne.ts).getTime());
-		setDirection('prev');
+		setDirection(direction);
 		setLastUpdate(Date.now());
+	}
+
+	const handlePrevPage = () => {
+		handleChangePage('prev');
 	};
 
 	const handleNextPage = () => {
-		if (!data?.topic?.comments?.length) return;
-		const firstOne = data.topic.comments[0];
-		const lastOne = data.topic.comments[data.topic.comments.length - 1];
-		setCurrPageOffset1(new Date(firstOne.ts).getTime());
-		setCurrPageOffset2(new Date(lastOne.ts).getTime());
-		setDirection('next');
-		setLastUpdate(Date.now());
+		handleChangePage('next');
 	};
 
 	// 处理刷新
