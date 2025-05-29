@@ -20,6 +20,7 @@ interface Comment {
 		name: string;
 	};
 	replies?: Comment[];
+	tlm?: string;
 }
 
 interface TopicDetail {
@@ -44,7 +45,7 @@ const TopicDetailPage = () => {
 	const router = useRouter();
 	const topicId = useRouteParameter('id');
 	const drid = useSearchParameter('drid');
-	console.log('==drid', drid);
+	// console.log('==drid', drid);
 	if (!topicId || !drid) {
 		router.navigate({
 			name: 'topics-index',
@@ -59,6 +60,13 @@ const TopicDetailPage = () => {
 	const [currPageOffset1, setCurrPageOffset1] = useState<number | null>(null);
 	const [currPageOffset2, setCurrPageOffset2] = useState<number | null>(null);
 	const [direction, setDirection] = useState<'first' | 'prev' | 'next'>('first');
+	const [expandedCommentId, setExpandedCommentId] = useState<string | null>(null);
+	const [expandedReplies, setExpandedReplies] = useState<{
+		commentId: string;
+		replies: Comment[];
+		offset?: number;
+		hasMore: boolean;
+	} | null>(null);
 	const limit = COMMENTS_PER_PAGE;
 
 	// 获取话题详情的接口
@@ -104,6 +112,9 @@ const TopicDetailPage = () => {
 		},
 	});
 
+	// 获取讨论消息的接口
+	const getReplies = useEndpoint('GET', '/v1/topics.discussion.replies');
+
 	// 处理导航
 	const handleFirstPage = () => {
 		setDirection('first');
@@ -144,6 +155,42 @@ const TopicDetailPage = () => {
 		submitComment(newComment);
 	};
 
+	// 处理展开回复
+	const handleExpandReplies = async (commentId: string) => {
+		const result = await getReplies({
+			commentId,
+		});
+		const newReplies = result.replies || [];
+		console.log('==handleExpandReplies newReplies', newReplies);
+		setExpandedReplies({
+			commentId,
+			replies: newReplies,
+			offset: newReplies.length > 0 ? new Date(newReplies[newReplies.length - 1].ts).getTime() : undefined,
+			hasMore: newReplies.length === 5,
+		});
+	};
+
+	// 处理加载更多回复
+	const handleLoadMoreReplies = async () => {
+		if (!expandedReplies) return;
+		const result = await getReplies({
+			commentId: expandedReplies.commentId,
+			offset: expandedReplies.offset,
+		});
+		const newReplies = result.replies || [];
+		setExpandedReplies({
+			...expandedReplies,
+			replies: [...expandedReplies.replies, ...newReplies],
+			offset: newReplies.length > 0 ? new Date(newReplies[newReplies.length - 1].ts).getTime() : expandedReplies.offset,
+			hasMore: newReplies.length === 5,
+		});
+	};
+
+	// 处理收起回复
+	const handleCollapseReplies = () => {
+		setExpandedReplies(null);
+	};
+
 	if (isLoading) {
 		return (
 			<Page>
@@ -157,7 +204,7 @@ const TopicDetailPage = () => {
 		);
 	}
 
-	const topic = data?.topic as TopicDetail;
+	const topic = data?.topic as unknown as TopicDetail;
 
 	return (
 		<Page>
@@ -173,9 +220,9 @@ const TopicDetailPage = () => {
 			<PageContent>
 				<Margins block="x16">
 					{/* 话题基本信息 */}
-					<Box display="flex" flexDirection="column" gap="x8">
-						<Box display="flex" alignItems="center" gap="x8">
-							<Avatar size="x40" username={topic?.u?.name} />
+					<Box display="flex" flexDirection="column" marginBlock="x8">
+						<Box display="flex" alignItems="center" marginBlock="x8">
+							<Avatar size="x40" url={`/avatar/${topic?.u?.name}`} />
 							<Box>
 								<Box fontScale="h4">{topic?.u?.name}</Box>
 								<Box fontScale="c1" color="hint">
@@ -188,9 +235,9 @@ const TopicDetailPage = () => {
 					<Divider />
 
 					{/* 评论列表 */}
-					<Box display="flex" flexDirection="column" gap="x16">
+					<Box display="flex" flexDirection="column" marginBlock="x16">
 						<Box fontScale="h4">{'评论'}</Box>
-						<Box display="flex" gap="x8">
+						<Box display="flex" marginBlock="x8">
 							<Button onClick={handleFirstPage}>
 								首页
 							</Button>
@@ -202,9 +249,9 @@ const TopicDetailPage = () => {
 							</Button>
 						</Box>
 						{topic?.comments?.map((comment) => (
-							<Box key={comment._id} display="flex" flexDirection="column" gap="x8">
-								<Box display="flex" gap="x8">
-									<Avatar size="x24" username={comment.u.name} />
+							<Box key={comment._id} display="flex" flexDirection="column" marginBlock="x8">
+								<Box display="flex" marginBlock="x8">
+									<Avatar size="x24" url={`/avatar/${comment.u.name}`} />
 									<Box flexGrow={1}>
 										<Box display="flex" justifyContent="space-between">
 											<Box fontScale="p2">{comment.u.name}</Box>
@@ -215,23 +262,44 @@ const TopicDetailPage = () => {
 										<Box fontScale="p1">{comment.msg}</Box>
 									</Box>
 								</Box>
-								{/* 回复列表 */}
-								{comment.replies && comment.replies.length > 0 && (
-									<Box marginLeft="x32" display="flex" flexDirection="column" gap="x8">
-										{comment.replies.map((reply) => (
-											<Box key={reply._id} display="flex" gap="x8">
-												<Avatar size="x24" username={reply.u.name} />
-												<Box flexGrow={1}>
-													<Box display="flex" justifyContent="space-between">
-														<Box fontScale="p2">{reply.u.name}</Box>
-														<Box fontScale="c1" color="hint">
-															{new Date(reply.ts).toLocaleString()}
+								{/* tlm 非空, 则说明这是个讨论串的头消息, 显示"展开回复", 点击加载 */
+								comment.tlm && (
+									<Box>
+										{expandedReplies?.commentId === comment._id ? (
+											<>
+												<Button small onClick={handleCollapseReplies}>
+													<Icon name="chevron-up" size="x16" marginInlineEnd={4} />
+													{'收起回复'}
+												</Button>
+												<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
+													{expandedReplies.replies?.map((reply) => (
+														<Box key={reply._id} display="flex" marginBlock="x8">
+															<Avatar size="x24" url={`/avatar/${reply.u.name}`} />
+															<Box flexGrow={1}>
+																<Box display="flex" justifyContent="space-between">
+																	<Box fontScale="p2">{reply.u.name}</Box>
+																	<Box fontScale="c1" color="hint">
+																		{new Date(reply.ts).toLocaleString()}
+																	</Box>
+																</Box>
+																<Box fontScale="p1">{reply.msg}</Box>
+															</Box>
 														</Box>
-													</Box>
-													<Box fontScale="p1">{reply.msg}</Box>
+													))}
+													{expandedReplies.hasMore && (
+														<Button small onClick={handleLoadMoreReplies}>
+															<Icon name="chevron-down" size="x16" marginInlineEnd={4} />
+															{'加载更多'}
+														</Button>
+													)}
 												</Box>
-											</Box>
-										))}
+											</>
+										) : (
+											<Button small onClick={() => handleExpandReplies(comment._id)}>
+												<Icon name="thread" size="x16" marginInlineEnd={4} />
+												{'展开回复'}
+											</Button>
+										)}
 									</Box>
 								)}
 							</Box>
@@ -239,7 +307,7 @@ const TopicDetailPage = () => {
 					</Box>
 
 					{/* 发表评论区域 */}
-					<Box display="flex" flexDirection="column" gap="x8">
+					<Box display="flex" flexDirection="column" marginBlock="x8">
 						<TextAreaInput
 							value={newComment}
 							onChange={(e) => setNewComment(e.currentTarget.value)}

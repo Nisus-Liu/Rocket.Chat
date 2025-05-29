@@ -39,12 +39,6 @@ declare module '@rocket.chat/rest-typings' {
 				offset: number;
 			};
 		};
-		'/v1/topics.discussion.messages': {
-			GET: (params: { discussionId: string; lastUpdate?: string }) => {
-				messages: any[];
-				lastUpdate: string;
-			};
-		};
 		'/v1/topics.discussion.detail': {
 			GET: (params: { 
 				topicId: string; 
@@ -81,6 +75,7 @@ declare module '@rocket.chat/rest-typings' {
 								name: string;
 							};
 						}>;
+						tlm: Date;
 					}>;
 					total: number;
 				};
@@ -99,6 +94,15 @@ declare module '@rocket.chat/rest-typings' {
 						name: string;
 					};
 				};
+			};
+		};
+		'/v1/topics.discussion.replies': {
+			GET: (params: { 
+				commentId: string; 
+				offset?: number; 
+				limit?: number 
+			}) => {
+				replies: any[];
 			};
 		};
 	}
@@ -297,65 +301,11 @@ API.v1.addRoute(
 	}
 )
 
-API.v1.addRoute(
-	'topics.discussion.messages',
-	{ authRequired: true },
-	{
-		async get() {
-			const { discussionId, lastUpdate } = this.queryParams;
-
-			check(discussionId, String);
-			if (lastUpdate) {
-				check(lastUpdate, String);
-			}
-
-			const user = await Meteor.userAsync();
-			if (!user) {
-				throw new Meteor.Error('error-invalid-user', 'Invalid user');
-			}
-
-			const roomIds = await getUserRoomIds(user._id);
-
-			// 获取讨论消息
-			const query = {
-				drid: discussionId,
-				rid: { $in: roomIds }
-			};
-
-			// 如果有 lastUpdate，只获取更新的消息
-			if (lastUpdate) {
-				query.ts = { $gt: new Date(lastUpdate) };
-			}
-
-			const messages = await Messages.find(
-				query,
-				{
-					sort: { ts: 1 },
-					projection: {
-						_id: 1,
-						rid: 1,
-						drid: 1,
-						msg: 1,
-						ts: 1,
-						u: 1,
-						replies: 1
-					}
-				}
-			).toArray();
-
-			// 返回最新消息的时间戳，用于下次更新
-			const currentTime = new Date().toISOString();
-
-			return API.v1.success({
-				messages,
-				lastUpdate: currentTime
-			});
-		}
-	}
-);
-
 
 const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_REPLIES_SIZE = 5;
+const TS_VIEW_SORT = { ts: -1 as SortDirection }
+const TS_VIEW_SORT_REVERSE = { ts: 1 as SortDirection }
 
 API.v1.addRoute(
 	'topics.discussion.detail',
@@ -406,8 +356,6 @@ API.v1.addRoute(
 				rid: drid,
 				msg: { $ne: ''},
 			} as any;
-			const viewSort = { ts: -1 as SortDirection }
-			const viewSortReverse = { ts: 1 as SortDirection }
 
 			const total = await Messages.countDocuments(query);
 
@@ -420,23 +368,24 @@ API.v1.addRoute(
 					ts_ms: { $toLong: '$ts' }, // 添加毫秒时间戳字段
 					u: 1,
 					replies: { $slice: 5 },
+					tlm: 1,
 				},
 				limit: Number(limit),
-				sort: viewSort // 默认降序
+				sort: TS_VIEW_SORT // 默认降序
 			};
 
 			// 获取第一页的评论
 			const getFirstPage = async () => {
 				const firstPageQuery = { ...query };
 				delete firstPageQuery.ts;
-				return await Messages.find(firstPageQuery, { ...findOptions, sort: viewSort }).toArray();
+				return await Messages.find(firstPageQuery, { ...findOptions, sort: TS_VIEW_SORT }).toArray();
 			};
 
 			// 获取最后一页的评论
 			const getLastPage = async () => {
 				const lastPageQuery = { ...query };
 				delete lastPageQuery.ts;
-				const options = { ...findOptions, sort: viewSortReverse };
+				const options = { ...findOptions, sort: TS_VIEW_SORT_REVERSE };
 				const comments = await Messages.find(lastPageQuery, options).toArray();
 				// console.log('==last comments', lastPageQuery, options, comments);
 				return comments.reverse();
@@ -449,7 +398,7 @@ API.v1.addRoute(
 				comments = await getFirstPage();
 			} else if (direction === 'prev') { // 上一页
 				// 正常排序取反(这里即升序), 取大于 offset1 的前limit条
-				findOptions.sort = viewSortReverse;
+				findOptions.sort = TS_VIEW_SORT_REVERSE;
 				if (offset1) {
 					query.ts = { $gt: offset1 };
 				}
@@ -476,7 +425,7 @@ API.v1.addRoute(
 					// 下一页到头，返回最后一页  问题: 最后一页不够limit, 直接getLastPage会返回limit个, 造成混乱, 诉求: 刚才看到几条, 补偿返回几条
 					// comments = await getLastPage();
 					query.ts = { $lte: offset1, $gte: offset2 };
-					findOptions.sort = viewSort;
+					findOptions.sort = TS_VIEW_SORT;
 					comments = await Messages.find(query, findOptions).toArray();
 					// console.log('==next comments2', comments);
 				}
@@ -549,6 +498,57 @@ API.v1.addRoute(
 					ts: result.ts,
 					u: result.u
 				}
+			});
+		}
+	}
+);
+
+
+API.v1.addRoute(
+	'topics.discussion.replies',
+	{ authRequired: true },
+	{
+		async get() {
+			const { commentId, offset, limit = DEFAULT_REPLIES_SIZE } = this.queryParams;
+			check(commentId, String);
+
+			const user = await Meteor.userAsync();
+			if (!user) {
+				throw new Meteor.Error('error-invalid-user', 'Invalid user');
+			}
+
+			const roomIds = await getUserRoomIds(user._id);
+
+			// 获取讨论消息
+			const query = {
+				tmid: commentId,
+				rid: { $in: roomIds },
+			};
+			if (offset) {
+				query.ts = { $lt: new Date(Number(offset)) };
+			}
+
+			const replies = await Messages.find(
+				query,
+				{
+					projection: {
+						_id: 1,
+						rid: 1,
+						tmid: 1,
+						drid: 1,
+						msg: 1,
+						ts: 1,
+						u: 1,
+						replies: 1,
+						u: 1,
+					},
+					limit: Number(limit),
+					sort: TS_VIEW_SORT // 默认降序
+				}
+			).toArray();
+
+			return API.v1.success({
+				replies,
 			});
 		}
 	}
