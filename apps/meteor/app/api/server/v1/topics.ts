@@ -304,8 +304,8 @@ API.v1.addRoute(
 
 const DEFAULT_PAGE_SIZE = 10;
 const DEFAULT_REPLIES_SIZE = 5;
-const TS_VIEW_SORT = { ts: -1 as SortDirection }
-const TS_VIEW_SORT_REVERSE = { ts: 1 as SortDirection }
+const TS_VIEW_DESC = { ts: -1 as SortDirection }
+const TS_VIEW_ASC = { ts: 1 as SortDirection }
 
 API.v1.addRoute(
 	'topics.discussion.detail',
@@ -355,6 +355,7 @@ API.v1.addRoute(
 			const query = {
 				rid: drid,
 				msg: { $ne: ''},
+				tmid: { $exists: false }, // 排除讨论串消息(非头消息)
 			} as any;
 
 			const total = await Messages.countDocuments(query);
@@ -364,6 +365,7 @@ API.v1.addRoute(
 				projection: {
 					_id: 1,
 					msg: 1,
+					md: 1,
 					ts: 1,
 					ts_ms: { $toLong: '$ts' }, // 添加毫秒时间戳字段
 					u: 1,
@@ -371,21 +373,21 @@ API.v1.addRoute(
 					tlm: 1,
 				},
 				limit: Number(limit),
-				sort: TS_VIEW_SORT // 默认降序
+				sort: TS_VIEW_DESC // 默认降序
 			};
 
 			// 获取第一页的评论
 			const getFirstPage = async () => {
 				const firstPageQuery = { ...query };
 				delete firstPageQuery.ts;
-				return await Messages.find(firstPageQuery, { ...findOptions, sort: TS_VIEW_SORT }).toArray();
+				return await Messages.find(firstPageQuery, { ...findOptions, sort: TS_VIEW_DESC }).toArray();
 			};
 
 			// 获取最后一页的评论
 			const getLastPage = async () => {
 				const lastPageQuery = { ...query };
 				delete lastPageQuery.ts;
-				const options = { ...findOptions, sort: TS_VIEW_SORT_REVERSE };
+				const options = { ...findOptions, sort: TS_VIEW_ASC };
 				const comments = await Messages.find(lastPageQuery, options).toArray();
 				// console.log('==last comments', lastPageQuery, options, comments);
 				return comments.reverse();
@@ -398,7 +400,7 @@ API.v1.addRoute(
 				comments = await getFirstPage();
 			} else if (direction === 'prev') { // 上一页
 				// 正常排序取反(这里即升序), 取大于 offset1 的前limit条
-				findOptions.sort = TS_VIEW_SORT_REVERSE;
+				findOptions.sort = TS_VIEW_ASC;
 				if (offset1) {
 					query.ts = { $gt: offset1 };
 				}
@@ -425,7 +427,7 @@ API.v1.addRoute(
 					// 下一页到头，返回最后一页  问题: 最后一页不够limit, 直接getLastPage会返回limit个, 造成混乱, 诉求: 刚才看到几条, 补偿返回几条
 					// comments = await getLastPage();
 					query.ts = { $lte: offset1, $gte: offset2 };
-					findOptions.sort = TS_VIEW_SORT;
+					findOptions.sort = TS_VIEW_DESC;
 					comments = await Messages.find(query, findOptions).toArray();
 					// console.log('==next comments2', comments);
 				}
@@ -523,9 +525,11 @@ API.v1.addRoute(
 			const query = {
 				tmid: commentId,
 				rid: { $in: roomIds },
+				// attachments 为空
+				// attachments: { $exists: false },
 			};
 			if (offset) {
-				query.ts = { $lt: new Date(Number(offset)) };
+				query.ts = { $gt: new Date(Number(offset)) };
 			}
 
 			const replies = await Messages.find(
@@ -540,10 +544,11 @@ API.v1.addRoute(
 						ts: 1,
 						u: 1,
 						replies: 1,
-						u: 1,
+						md: 1,
+						attachments: 1,
 					},
 					limit: Number(limit),
-					sort: TS_VIEW_SORT // 默认降序
+					sort: TS_VIEW_ASC // 评论升序
 				}
 			).toArray();
 

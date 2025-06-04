@@ -9,7 +9,11 @@ import { useToastMessageDispatch } from '@rocket.chat/ui-contexts';
 import { useChat } from '../room/contexts/ChatContext';
 import type { IMessage } from '@rocket.chat/core-typings';
 import { sdk } from '../../../app/utils/client/lib/SDKClient';
-
+import MessageContentBody from '../../components/message/MessageContentBody';
+import AttachmentAuthorName from '../../components/message/content/attachments/structure/AttachmentAuthorName';
+import AttachmentAuthor from '../../components/message/content/attachments/structure/AttachmentAuthor';
+import { useTimeAgo } from '../../hooks/useTimeAgo';
+import AttachmentAuthorAvatar from '../../components/message/content/attachments/structure/AttachmentAuthorAvatar';
 
 interface Comment {
 	_id: string;
@@ -21,6 +25,8 @@ interface Comment {
 	};
 	replies?: Comment[];
 	tlm?: string;
+	md?: any[];
+	attachments?: any[];
 }
 
 interface TopicDetail {
@@ -40,6 +46,44 @@ interface TopicDetail {
 
 const COMMENTS_PER_PAGE = 2;
 
+/**
+ * 评论消息box
+ */
+const CommentMsgBox = ({ comment }: { comment: Comment }) => {
+	return (
+		<Box display="flex" flexDirection="column" marginBlock="x8">
+			{	/* 回复某人 */
+				comment.attachments?.length ? (
+					<Box display='flex' alignItems='center'>
+						<Box display="flex" alignItems="center" marginBlock="x4">
+							<Avatar size="x24" url={`/avatar/${comment.u.name}`} />
+							<Box fontScale="p2" marginInlineStart="x8">{comment.u.name}</Box>
+						</Box>
+						<Box marginInline="x4">
+							<Icon name="chevron-left" size="x16" color="hint" />
+						</Box>
+						<Box display="flex" alignItems="center" marginBlock="x4">
+							<Avatar size="x24" url={`/avatar/${comment.attachments[0].author_name}`} />
+							<Box fontScale="p2" marginInlineStart="x8">{comment.attachments[0].author_name}</Box>
+						</Box>
+					</Box>
+				) : 
+				/* 无回复某人 */
+				<Box display="flex" alignItems="center" marginBlock="x4">
+					<Avatar size="x24" url={`/avatar/${comment.u.name}`} />
+					<Box fontScale="p2" marginInlineStart="x8">{comment.u.name}</Box>
+				</Box>
+			}
+			<Box marginBlock="x4">
+				{comment.md ? <MessageContentBody md={comment.md} /> : comment.msg}
+			</Box>
+			<Box fontScale="c1" color="hint" marginBlock="x4">
+				{new Date(comment.ts).toLocaleString()}
+			</Box>
+		</Box>
+	);
+};
+
 const TopicDetailPage = () => {
 	const t = useTranslation();
 	const router = useRouter();
@@ -54,6 +98,7 @@ const TopicDetailPage = () => {
 	}
 	const dispatchToastMessage = useToastMessageDispatch();
 	const queryClient = useQueryClient();
+	const formatTime = useTimeAgo();
 
 	const [newComment, setNewComment] = useState('');
 	const [lastUpdate, setLastUpdate] = useState<number>(0);
@@ -131,6 +176,7 @@ const TopicDetailPage = () => {
 		setCurrPageOffset2(new Date(lastOne.ts).getTime());
 		setDirection(direction);
 		setLastUpdate(Date.now());
+		setExpandedReplies(null);
 	}
 
 	const handlePrevPage = () => {
@@ -165,7 +211,7 @@ const TopicDetailPage = () => {
 		setExpandedReplies({
 			commentId,
 			replies: newReplies,
-			offset: newReplies.length > 0 ? new Date(newReplies[newReplies.length - 1].ts).getTime() : undefined,
+			offset: newReplies.length > 0 ? new Date(newReplies[newReplies.length - 1].ts).getTime() : und,
 			hasMore: newReplies.length === 5,
 		});
 	};
@@ -212,115 +258,100 @@ const TopicDetailPage = () => {
 				title={topic?.title}
 				onClickBack={() => router.navigate({ name: 'topics-index' })}
 			>
-					<Box data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
-						<Icon name='refresh' size='x16' marginInlineEnd={4} />
-						{t('Refresh')}
-					</Box>
+				<Box data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
+					<Icon name='refresh' size='x16' marginInlineEnd={4} />
+					{t('Refresh')}
+				</Box>
 			</PageHeader>
 			<PageContent>
-				<Margins block="x16">
-					{/* 话题基本信息 */}
-					<Box display="flex" flexDirection="column" marginBlock="x8">
-						<Box display="flex" alignItems="center" marginBlock="x8">
-							<Avatar size="x40" url={`/avatar/${topic?.u?.name}`} />
-							<Box>
-								<Box fontScale="h4">{topic?.u?.name}</Box>
-								<Box fontScale="c1" color="hint">
-									{new Date(topic?.ts).toLocaleString()}
+				<Box 
+					display="flex" 
+					flexDirection="column" 
+					height="calc(100vh - 64px)" 
+					overflowY="auto"
+				>
+					<Margins block="x16">
+						{/* 话题基本信息 */}
+						<Box display="flex" flexDirection="column" marginBlock="x8">
+							<Box display="flex" alignItems="center" marginBlock="x8">
+								<Avatar size="x40" url={`/avatar/${topic?.u?.name}`} />
+								<Box>
+									<Box fontScale="h4">{topic?.u?.name}</Box>
+									<Box fontScale="c1" color="hint">
+										{new Date(topic?.ts).toLocaleString()}
+									</Box>
 								</Box>
 							</Box>
 						</Box>
-					</Box>
 
-					<Divider />
+						<Divider />
 
-					{/* 评论列表 */}
-					<Box display="flex" flexDirection="column" marginBlock="x16">
-						<Box fontScale="h4">{'评论'}</Box>
-						<Box display="flex" marginBlock="x8">
-							<Button onClick={handleFirstPage}>
-								首页
-							</Button>
-							<Button onClick={handlePrevPage}>
-								前页
-							</Button>
-							<Button onClick={handleNextPage}>
-								后页
-							</Button>
-						</Box>
-						{topic?.comments?.map((comment) => (
-							<Box key={comment._id} display="flex" flexDirection="column" marginBlock="x8">
-								<Box display="flex" marginBlock="x8">
-									<Avatar size="x24" url={`/avatar/${comment.u.name}`} />
-									<Box flexGrow={1}>
-										<Box display="flex" justifyContent="space-between">
-											<Box fontScale="p2">{comment.u.name}</Box>
-											<Box fontScale="c1" color="hint">
-												{new Date(comment.ts).toLocaleString()}
-											</Box>
-										</Box>
-										<Box fontScale="p1">{comment.msg}</Box>
-									</Box>
-								</Box>
-								{/* tlm 非空, 则说明这是个讨论串的头消息, 显示"展开回复", 点击加载 */
-								comment.tlm && (
-									<Box>
-										{expandedReplies?.commentId === comment._id ? (
-											<>
-												<Button small onClick={handleCollapseReplies}>
-													<Icon name="chevron-up" size="x16" marginInlineEnd={4} />
-													{'收起回复'}
+						{/* 评论列表 */}
+						<Box display="flex" flexDirection="column" marginBlock="x16">
+							<Box fontScale="h4">{'评论'}</Box>
+							<Box display="flex" marginBlock="x8">
+								<Button onClick={handleFirstPage}>
+									首页
+								</Button>
+								<Button onClick={handlePrevPage}>
+									前页
+								</Button>
+								<Button onClick={handleNextPage}>
+									后页
+								</Button>
+							</Box>
+							{topic?.comments?.map((comment) => (
+								<Box key={comment._id} display="flex" flexDirection="column" marginBlock="x8">
+									<CommentMsgBox comment={comment} />
+									{/* tlm 非空, 则说明这是个讨论串的头消息, 显示"展开回复", 点击加载 */
+									comment.tlm && (
+										<Box>
+											{expandedReplies?.commentId === comment._id ? (
+												<>
+													<Button small onClick={handleCollapseReplies}>
+														<Icon name="chevron-up" size="x16" marginInlineEnd={4} />
+														{'收起回复'}
+													</Button>
+													<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
+														{expandedReplies.replies?.map((reply) => (
+															<CommentMsgBox key={reply._id} comment={reply} />
+														))}
+														{expandedReplies.hasMore && (
+															<Button small onClick={handleLoadMoreReplies}>
+																<Icon name="chevron-down" size="x16" marginInlineEnd={4} />
+																{'加载更多'}
+															</Button>
+														)}
+													</Box>
+												</>
+											) : (
+												<Button small onClick={() => handleExpandReplies(comment._id)}>
+													<Icon name="thread" size="x16" marginInlineEnd={4} />
+													{'展开回复'}
 												</Button>
-												<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
-													{expandedReplies.replies?.map((reply) => (
-														<Box key={reply._id} display="flex" marginBlock="x8">
-															<Avatar size="x24" url={`/avatar/${reply.u.name}`} />
-															<Box flexGrow={1}>
-																<Box display="flex" justifyContent="space-between">
-																	<Box fontScale="p2">{reply.u.name}</Box>
-																	<Box fontScale="c1" color="hint">
-																		{new Date(reply.ts).toLocaleString()}
-																	</Box>
-																</Box>
-																<Box fontScale="p1">{reply.msg}</Box>
-															</Box>
-														</Box>
-													))}
-													{expandedReplies.hasMore && (
-														<Button small onClick={handleLoadMoreReplies}>
-															<Icon name="chevron-down" size="x16" marginInlineEnd={4} />
-															{'加载更多'}
-														</Button>
-													)}
-												</Box>
-											</>
-										) : (
-											<Button small onClick={() => handleExpandReplies(comment._id)}>
-												<Icon name="thread" size="x16" marginInlineEnd={4} />
-												{'展开回复'}
-											</Button>
-										)}
-									</Box>
-								)}
-							</Box>
-						))}
-					</Box>
-
-					{/* 发表评论区域 */}
-					<Box display="flex" flexDirection="column" marginBlock="x8">
-						<TextAreaInput
-							value={newComment}
-							onChange={(e) => setNewComment(e.currentTarget.value)}
-							placeholder={'撰写评论'}
-							rows={3}
-						/>
-						<Box display="flex" justifyContent="flex-end">
-							<Button primary onClick={handleSubmitComment}>
-								{'发表评论'}
-							</Button>
+											)}
+										</Box>
+									)}
+								</Box>
+							))}
 						</Box>
-					</Box>
-				</Margins>
+
+						{/* 发表评论区域 */}
+						<Box display="flex" flexDirection="column" marginBlock="x8">
+							<TextAreaInput
+								value={newComment}
+								onChange={(e) => setNewComment(e.currentTarget.value)}
+								placeholder={'撰写评论'}
+								rows={3}
+							/>
+							<Box display="flex" justifyContent="flex-end">
+								<Button primary onClick={handleSubmitComment}>
+									{'发表评论'}
+								</Button>
+							</Box>
+						</Box>
+					</Margins>
+				</Box>
 			</PageContent>
 		</Page>
 	);
