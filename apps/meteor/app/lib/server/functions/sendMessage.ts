@@ -13,6 +13,7 @@ import { settings } from '../../../settings/server';
 import { afterSaveMessage } from '../lib/afterSaveMessage';
 import { notifyOnRoomChangedById, notifyOnMessageChange } from '../lib/notifyListener';
 import { validateCustomMessageFields } from '../lib/validateCustomMessageFields';
+import { isQuoteAttachment } from '@rocket.chat/core-typings';
 
 // TODO: most of the types here are wrong, but I don't want to change them now
 
@@ -262,6 +263,9 @@ export const sendMessage = async function (user: any, message: any, room: any, u
 		return;
 	}
 
+	// 处理引用消息链
+	await handleQuoteMessageChain(message); // message.qmid
+
 	if (message._id && upsert) {
 		const { _id } = message;
 		delete message._id;
@@ -298,3 +302,33 @@ export const sendMessage = async function (user: any, message: any, room: any, u
 
 	return message;
 };
+
+/**
+ * Handle quote message chain  处理引用消息链
+ */
+async function handleQuoteMessageChain(message: IMessage) {
+	console.log('==message', message);
+	const quoteAttachment = message.attachments?.find((attachment: any) => isQuoteAttachment(attachment));
+	if (quoteAttachment) {
+		const quotedMessage = await Messages.findOneById(quoteAttachment.message_link?.split('msg=')[1] ?? '');
+		if (quotedMessage) {
+			if (!quotedMessage.qmid) {
+				message.qmid = quotedMessage._id;
+				// This is the first quote in the chain, 被引用消息作为头消息
+				await Messages.updateOne(
+					{ _id: quotedMessage._id },
+					{ $set: { qlm: new Date(), qm_count: 1 } }
+				);
+			} else {
+				// This is part of an existing quote chain
+				message.qmid = quotedMessage.qmid;
+				await Messages.updateOne(
+					// Update the quote count in the head message
+					{ _id: message.qmid },
+					{ $inc: { qm_count: 1 } }
+				);
+			}
+		}
+	}
+}
+

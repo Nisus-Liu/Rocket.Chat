@@ -229,6 +229,11 @@ export interface IMessage extends IRocketChatRecord {
 		priority?: Pick<ILivechatPriority, 'name' | 'i18n'>;
 	};
 
+	// Quote message chain fields
+	qlm?: Date; // Quote chain head message timestamp
+	qm_count?: number; // Quote chain message count
+	qmid?: string; // Quote chain head message id
+
 	customFields?: IMessageCustomFields;
 
 	content?: {
