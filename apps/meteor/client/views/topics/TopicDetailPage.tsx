@@ -1,6 +1,6 @@
 import { Box, Button, Margins, TextAreaInput, Avatar, Divider, Icon } from '@rocket.chat/fuselage';
 import { useTranslation, useRouter, useRouteParameter, useSearchParameter } from '@rocket.chat/ui-contexts';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { Page, PageContent, PageHeader } from '../../components/Page';
@@ -14,6 +14,8 @@ import AttachmentAuthorName from '../../components/message/content/attachments/s
 import AttachmentAuthor from '../../components/message/content/attachments/structure/AttachmentAuthor';
 import { useTimeAgo } from '../../hooks/useTimeAgo';
 import AttachmentAuthorAvatar from '../../components/message/content/attachments/structure/AttachmentAuthorAvatar';
+import { useUserInfoQuery } from '/client/hooks/useUserInfoQuery';
+import { useUserDisplayName } from '@rocket.chat/ui-client';
 
 interface Comment {
 	_id: string;
@@ -25,6 +27,7 @@ interface Comment {
 	};
 	replies?: Comment[];
 	tlm?: string;
+	qlm?: string;
 	md?: any[];
 	attachments?: any[];
 }
@@ -50,6 +53,10 @@ const COMMENTS_PER_PAGE = 2;
  * 评论消息box
  */
 const CommentMsgBox = ({ comment }: { comment: Comment }) => {
+	// 被回复者用户显示名  修改后引用消息会冗余 username 和 name, 降级使用 author_name (源代码)
+	const firstAttachment = comment.attachments?.[0];
+	const repliedUserDisplayName = firstAttachment && useUserDisplayName({ name: firstAttachment.name, username: firstAttachment.username || firstAttachment.author_name });
+
 	return (
 		<Box display="flex" flexDirection="column" marginBlock="x8">
 			{	/* 回复某人 */
@@ -63,8 +70,8 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 							<Icon name="chevron-left" size="x16" color="hint" />
 						</Box>
 						<Box display="flex" alignItems="center" marginBlock="x4">
-							<Avatar size="x24" url={`/avatar/${comment.attachments[0].author_name}`} />
-							<Box fontScale="p2" marginInlineStart="x8">{comment.attachments[0].author_name}</Box>
+							<Avatar size="x24" url={`/avatar/${repliedUserDisplayName}`} />
+							<Box fontScale="p2" marginInlineStart="x8">{repliedUserDisplayName}</Box>
 						</Box>
 					</Box>
 				) : 
@@ -202,9 +209,12 @@ const TopicDetailPage = () => {
 	};
 
 	// 处理展开回复
-	const handleExpandReplies = async (commentId: string) => {
+	const handleExpandReplies = async (comment: Comment) => {
+		const {_id: commentId, tlm, qlm} = comment;
 		const result = await getReplies({
 			commentId,
+			tlm,
+			qlm,
 		});
 		const newReplies = result.replies || [];
 		console.log('==handleExpandReplies newReplies', newReplies);
@@ -304,7 +314,7 @@ const TopicDetailPage = () => {
 								<Box key={comment._id} display="flex" flexDirection="column" marginBlock="x8">
 									<CommentMsgBox comment={comment} />
 									{/* tlm 非空, 则说明这是个讨论串的头消息, 显示"展开回复", 点击加载 */
-									comment.tlm && (
+									(comment.tlm || comment.qlm) && (
 										<Box>
 											{expandedReplies?.commentId === comment._id ? (
 												<>
@@ -325,7 +335,7 @@ const TopicDetailPage = () => {
 													</Box>
 												</>
 											) : (
-												<Button small onClick={() => handleExpandReplies(comment._id)}>
+												<Button small onClick={() => handleExpandReplies(comment)}>
 													<Icon name="thread" size="x16" marginInlineEnd={4} />
 													{'展开回复'}
 												</Button>

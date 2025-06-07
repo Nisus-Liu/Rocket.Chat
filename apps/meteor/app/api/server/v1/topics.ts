@@ -356,6 +356,7 @@ API.v1.addRoute(
 				rid: drid,
 				msg: { $ne: ''},
 				tmid: { $exists: false }, // 排除讨论串消息(非头消息)
+				qmid: { $exists: false }, // 排除引用消息
 			} as any;
 
 			const total = await Messages.countDocuments(query);
@@ -371,6 +372,7 @@ API.v1.addRoute(
 					u: 1,
 					replies: { $slice: 5 },
 					tlm: 1,
+					qlm: 1,
 				},
 				limit: Number(limit),
 				sort: TS_VIEW_DESC // 默认降序
@@ -511,7 +513,7 @@ API.v1.addRoute(
 	{ authRequired: true },
 	{
 		async get() {
-			const { commentId, offset, limit = DEFAULT_REPLIES_SIZE } = this.queryParams;
+			const { commentId, tlm, qlm, offset, limit = DEFAULT_REPLIES_SIZE } = this.queryParams;
 			check(commentId, String);
 
 			const user = await Meteor.userAsync();
@@ -523,11 +525,20 @@ API.v1.addRoute(
 
 			// 获取讨论消息
 			const query = {
-				tmid: commentId,
 				rid: { $in: roomIds },
 				// attachments 为空
 				// attachments: { $exists: false },
 			};
+			if (tlm) {
+				// 讨论串
+				query.tmid = commentId;
+			} else if (qlm) {
+				// 引用串
+				query.qmid = commentId;
+			} else {
+				throw new Meteor.Error('error-invalid-argument', 'Invalid argument');
+			}
+
 			if (offset) {
 				query.ts = { $gt: new Date(Number(offset)) };
 			}

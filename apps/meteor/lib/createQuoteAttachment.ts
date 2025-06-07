@@ -16,5 +16,8 @@ export function createQuoteAttachment(
 		author_icon: userAvatarUrl,
 		attachments: message.attachments || [],
 		ts: message.ts,
+		// ::引用消息串的作者用户名和姓名, 始终添加, 不让 useRealName 影响 -- 2025.06.07 L&J
+		username: message.u.username, 
+		name: message.u.name, 
 	};
 }
