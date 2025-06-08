@@ -357,8 +357,12 @@ API.v1.addRoute(
 			const query = {
 				rid: drid,
 				msg: { $ne: '' },
-				tmid: { $exists: false }, // 排除讨论串消息(非头消息)
-				qmid: { $exists: false }, // 排除引用消息
+				// 排除非讨论串头消息, 排除非引用头消息, 但要考虑非引用头但是是讨论串头的情况, qmid非空且tlm非空 要保留
+				$or: [
+					{ tmid: { $exists: false }, qmid: { $exists: false } },
+					{ tlm: { $exists: true } },
+					{ qlm: { $exists: true } },
+				]
 			} as any;
 
 			const total = await Messages.countDocuments(query);

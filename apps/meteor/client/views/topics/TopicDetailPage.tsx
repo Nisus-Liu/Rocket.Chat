@@ -89,14 +89,17 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 				msg: replyText, // 放前面, 避免覆盖掉引用的特殊格式msg
 				...composedMessage,
 			} as IMessage;
+			// 考虑有些消息既是讨论串又是引用串, 所以需要同时带上tmid和qmid
 			if (comment.tlm || comment.tmid) {
 				// 回复讨论串消息
 				message.tmid = comment.tmid || comment._id;
-			} else if (comment.qlm || comment.qmid) {
+			}
+			if (comment.qlm || comment.qmid) {
 				// 回复引用消息
 				message.qmid = comment.qmid || comment._id;
-			} else {
-				dispatchToastMessage({ type: 'error', message: '暂不支持回复非讨论串和引用串的消息' });
+			}
+			if (!message.tmid && !message.qmid) {
+				dispatchToastMessage({ type: 'error', message: '暂仅支持回复讨论串和引用串的消息' });
 				return;
 			}
 
