@@ -312,22 +312,18 @@ async function handleQuoteMessageChain(message: IMessage) {
 	if (quoteAttachment) {
 		const quotedMessage = await Messages.findOneById(quoteAttachment.message_link?.split('msg=')[1] ?? '');
 		if (quotedMessage) {
-			if (!quotedMessage.qmid) {
+			if (!quotedMessage.qmid || quotedMessage.qmid === quotedMessage._id) {
+				// 引用了头消息 (第一次引用, 产生链, 被引用者作为头消息; 或后续直接引用头消息)
 				message.qmid = quotedMessage._id;
-				// This is the first quote in the chain, 被引用消息作为头消息
-				await Messages.updateOne(
-					{ _id: quotedMessage._id },
-					{ $set: { qlm: new Date(), qm_count: 1 } }
-				);
 			} else {
 				// This is part of an existing quote chain
 				message.qmid = quotedMessage.qmid;
-				await Messages.updateOne(
-					// Update the quote count in the head message
-					{ _id: message.qmid },
-					{ $inc: { qm_count: 1 } }
-				);
 			}
+			await Messages.updateOne(
+				// Update the quote count in the head message
+				{ _id: message.qmid },
+				{ $set: { qlm: new Date() }, $inc: { qm_count: 1 } }
+			);
 		}
 	}
 }

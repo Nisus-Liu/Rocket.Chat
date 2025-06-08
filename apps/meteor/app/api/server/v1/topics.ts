@@ -40,13 +40,13 @@ declare module '@rocket.chat/rest-typings' {
 			};
 		};
 		'/v1/topics.discussion.detail': {
-			GET: (params: { 
-				topicId: string; 
-				drid: string; 
-				offset1?: number; 
-				offset2?: number; 
-				direction?: string; 
-				limit?: number 
+			GET: (params: {
+				topicId: string;
+				drid: string;
+				offset1?: number;
+				offset2?: number;
+				direction?: string;
+				limit?: number
 			}) => {
 				topic: {
 					rid: string;
@@ -97,10 +97,12 @@ declare module '@rocket.chat/rest-typings' {
 			};
 		};
 		'/v1/topics.discussion.replies': {
-			GET: (params: { 
-				commentId: string; 
-				offset?: number; 
-				limit?: number 
+			GET: (params: {
+				commentId: string;
+				offset?: number;
+				limit?: number
+				tlm?: any;
+				qlm?: any;
 			}) => {
 				replies: any[];
 			};
@@ -312,15 +314,15 @@ API.v1.addRoute(
 	{ authRequired: true },
 	{
 		async get() {
-			const { 
-				topicId, 
-				drid, 
-				offset1: offset1Str, 
-				offset2: offset2Str, 
-				direction, 
-				limit = DEFAULT_PAGE_SIZE 
+			const {
+				topicId,
+				drid,
+				offset1: offset1Str,
+				offset2: offset2Str,
+				direction,
+				limit = DEFAULT_PAGE_SIZE
 			} = this.queryParams;
-			
+
 			check(topicId, String);
 			check(drid, String);
 			if (direction) {
@@ -350,11 +352,11 @@ API.v1.addRoute(
 				throw new Meteor.Error('error-invalid-topic', 'Invalid topic');
 			}
 
-			
+
 			// 构建查询条件
 			const query = {
 				rid: drid,
-				msg: { $ne: ''},
+				msg: { $ne: '' },
 				tmid: { $exists: false }, // 排除讨论串消息(非头消息)
 				qmid: { $exists: false }, // 排除引用消息
 			} as any;
@@ -365,6 +367,7 @@ API.v1.addRoute(
 			const findOptions = {
 				projection: {
 					_id: 1,
+					rid: 1,
 					msg: 1,
 					md: 1,
 					ts: 1,
@@ -373,6 +376,8 @@ API.v1.addRoute(
 					replies: { $slice: 5 },
 					tlm: 1,
 					qlm: 1,
+					tmid: 1,
+					qmid: 1,
 				},
 				limit: Number(limit),
 				sort: TS_VIEW_DESC // 默认降序
@@ -529,7 +534,13 @@ API.v1.addRoute(
 				// attachments 为空
 				// attachments: { $exists: false },
 			};
-			if (tlm) {
+			if (tlm && qlm) {
+				// 讨论串的头消息同时也有引用消息. 即 tlm和qlm都存在. 此时, 回复消息列表要将这两类串合并到一起
+				query.$or = [
+					{ tmid: commentId },
+					{ qmid: commentId }
+				];
+			} else if (tlm) {
 				// 讨论串
 				query.tmid = commentId;
 			} else if (qlm) {
@@ -549,7 +560,11 @@ API.v1.addRoute(
 					projection: {
 						_id: 1,
 						rid: 1,
+						tlm: 1,
 						tmid: 1,
+						qlm: 1,
+						qmid: 1,
+						qm_count: 1,
 						drid: 1,
 						msg: 1,
 						ts: 1,

@@ -15,7 +15,7 @@ export const createDataAPI = ({ rid, tmid }: { rid: IRoom['_id']; tmid: IMessage
 		text: string,
 		{ sendToChannel, quotedMessages, originalMessage }: { sendToChannel?: boolean; quotedMessages: IMessage[]; originalMessage?: IMessage },
 	): Promise<IMessage> => {
-		debugger;
+		debugger; // 引用消息发送前的处理
 		const msg = await prependReplies(text, quotedMessages);
 
 		const effectiveRID = originalMessage?.rid ?? rid;
