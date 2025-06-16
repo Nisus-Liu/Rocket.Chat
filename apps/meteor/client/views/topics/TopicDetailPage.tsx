@@ -19,6 +19,7 @@ import { useUserInfoQuery } from '/client/hooks/useUserInfoQuery';
 import { useUserDisplayName } from '@rocket.chat/ui-client';
 import { dispatchToastMessage } from '/client/lib/toast';
 import { RoomProvider } from '../room';
+import { useGetMessageByID } from '../room/contextualBar/Threads/hooks/useGetMessageByID';
 
 interface Comment {
 	_id: string;
@@ -41,7 +42,7 @@ interface Comment {
 interface TopicDetail {
 	// _id: string;
 	rid: string;
-	drid: string;
+	drid?: string;
 	title: string;
 	detail: string;
 	ts: Date;
@@ -192,9 +193,22 @@ const TopicDetailPage = () => {
 	const t = useTranslation();
 	const router = useRouter();
 	const topicId = useRouteParameter('id');
-	const drid = useSearchParameter('drid');
-	// console.log('==drid', drid);
-	if (!topicId || !drid) {
+	let rid = useSearchParameter('rid');
+
+	// 使用 useGetMessageByID hook 获取消息
+	const getMessageByID = useGetMessageByID();
+	const { data: messageData } = useQuery({
+		queryKey: ['message', topicId],
+		queryFn: () => getMessageByID(topicId || ''),
+		enabled: !!topicId && !rid,
+	});
+
+	// 从 messageData 获取 rid
+	if (messageData?.rid) {
+		rid = messageData.rid;
+	}
+
+	if (!topicId) {
 		router.navigate({
 			name: 'topics-index',
 		});
@@ -228,11 +242,14 @@ const TopicDetailPage = () => {
 
 	// 获取话题详情
 	const { data, isLoading, refetch } = useQuery({
-		queryKey: ['topic', topicId, currPageOffset1, currPageOffset2, direction, limit, lastUpdate],
+		queryKey: ['topic', topicId, rid, currPageOffset1, currPageOffset2, direction, limit, lastUpdate],
 		queryFn: async () => {
+			if (!rid) {
+				throw new Error('Room ID is required');
+			}
 			const result = await getTopicDetail({
 				topicId,
-				drid,
+				rid,
 				offset1: currPageOffset1 || undefined,
 				offset2: currPageOffset2 || undefined,
 				direction,
@@ -240,7 +257,7 @@ const TopicDetailPage = () => {
 			});
 			return result;
 		},
-		enabled: !!topicId,
+		enabled: !!topicId && !!rid,
 	});
 
 	const chat = useChat();
@@ -248,7 +265,7 @@ const TopicDetailPage = () => {
 	const { mutate: submitComment } = useMutation({
 		mutationFn: async (text: string) => {
 			const message = {
-				rid: drid,
+				rid: rid,
 				msg: text,
 			} as IMessage
 			// 使用 sdk.call('sendMessage') 发送消息
@@ -381,13 +398,17 @@ const TopicDetailPage = () => {
 
 	const topic = data?.topic as unknown as TopicDetail;
 
+	if (!rid) {
+		return;
+	}
+
 	return (
-		<RoomProvider rid={drid}>
+		<RoomProvider rid={rid}>
 			<ChatProvider>
 				<Page>
 					<PageHeader
 						title={topic?.title}
-						onClickBack={() => router.navigate({ name: 'topics-index' })}
+						{...(!document.referrer ? {} : { onClickBack: () => router.navigate(-1) })}
 					>
 						<Box data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
 							<Icon name='refresh' size='x16' marginInlineEnd={4} />

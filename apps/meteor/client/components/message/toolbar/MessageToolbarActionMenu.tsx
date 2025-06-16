@@ -26,6 +26,7 @@ import { useViewOriginalTranslationAction } from './useViewOriginalTranslationAc
 import { useWebDAVMessageAction } from './useWebDAVMessageAction';
 import type { MessageActionContext } from '../../../../app/ui-utils/client/lib/MessageAction';
 import { isTruthy } from '../../../../lib/isTruthy';
+import { useForwardTopicAction } from './useForwardTopicAction';
 
 type MessageActionSection = {
 	id: string;
@@ -70,6 +71,7 @@ const MessageToolbarActionMenu = ({ message, context, room, subscription, onChan
 		useReportMessageAction(message, { room, subscription }),
 		useShowMessageReactionsAction(message),
 		useReadReceiptsDetailsAction(message),
+		useForwardTopicAction(message),
 	];
 
 	const hiddenActions = useLayoutHiddenActions().messageToolbox;

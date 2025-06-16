@@ -42,7 +42,7 @@ declare module '@rocket.chat/rest-typings' {
 		'/v1/topics.discussion.detail': {
 			GET: (params: {
 				topicId: string;
-				drid: string;
+				rid: string;
 				offset1?: number;
 				offset2?: number;
 				direction?: string;
@@ -316,7 +316,7 @@ API.v1.addRoute(
 		async get() {
 			const {
 				topicId,
-				drid,
+				rid,
 				offset1: offset1Str,
 				offset2: offset2Str,
 				direction,
@@ -324,7 +324,7 @@ API.v1.addRoute(
 			} = this.queryParams;
 
 			check(topicId, String);
-			check(drid, String);
+			check(rid, String);
 			if (direction) {
 				check(direction, String);
 			}
@@ -338,14 +338,14 @@ API.v1.addRoute(
 			}
 
 			const roomIds = await getUserRoomIds(user._id);
-			// drid 实际是 roomId, 看是否在 roomIds 中, 不在则无权查看
-			if (!roomIds.includes(drid)) {
+			// 看是否在 roomIds 中, 不在则无权查看
+			if (!roomIds.includes(rid)) {
 				throw new Meteor.Error('error-no-permission-to-view-topic', 'No permission to view topic');
 			}
 
 			// 讨论形式的话题是room实体, 在 rocketchat_room 表里存有room信息, 得出话题标题(fname字段)和详情(topic字段)
 			const topicRoom = await Rooms.findOne({
-				_id: drid,
+				_id: rid,
 			});
 
 			if (!topicRoom) {
@@ -355,8 +355,9 @@ API.v1.addRoute(
 
 			// 构建查询条件
 			const query = {
-				rid: drid,
+				rid: rid,
 				msg: { $ne: '' },
+				t: { $ne: 'au' }, // 排除 Add User 系统消息
 				// 排除非讨论串头消息, 排除非引用头消息, 但要考虑非引用头但是是讨论串头的情况, qmid非空且tlm非空 要保留
 				$or: [
 					{ tmid: { $exists: false }, qmid: { $exists: false } },
@@ -448,7 +449,7 @@ API.v1.addRoute(
 				topic: {
 					// _id: topicRoom._id,
 					rid: topicRoom._id,
-					drid: drid,
+					rid: rid,
 					title: topicRoom.fname,
 					detail: topicRoom.topic,
 					ts: topicRoom.ts,

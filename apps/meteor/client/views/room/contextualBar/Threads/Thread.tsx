@@ -21,6 +21,7 @@ import {
 import { useRoomToolbox } from '../../contexts/RoomToolboxContext';
 import { useGoToThreadList } from '../../hooks/useGoToThreadList';
 import ChatProvider from '../../providers/ChatProvider';
+import { useRouter } from '@rocket.chat/ui-contexts';
 
 type ThreadProps = {
 	tmid: IMessage['_id'];
@@ -29,6 +30,7 @@ type ThreadProps = {
 const Thread = ({ tmid }: ThreadProps) => {
 	const goToThreadList = useGoToThreadList({ replace: true });
 	const { closeTab } = useRoomToolbox();
+	const router = useRouter();
 
 	const mainMessageQueryResult = useThreadMainMessageQuery(tmid, {
 		onDelete: () => {
@@ -119,6 +121,19 @@ const Thread = ({ tmid }: ThreadProps) => {
 								title={following ? t('Following') : t('Not_Following')}
 								disabled={!mainMessageQueryResult.isSuccess || toggleFollowingMutation.isPending}
 								onClick={handleToggleFollowing}
+							/>
+							<ContextualbarAction
+								name='discussion'
+								title={t('Topic')}
+								onClick={() => {
+									// 讨论串工具栏加按钮跳转到话题页
+									// console.log('==thread forward topic', tmid);
+									const url = router.buildRoutePath({
+										name: 'topics-detail',
+										params: { id: tmid },
+									});
+									window.open(url, '_blank');
+								}}
 							/>
 							<ContextualbarClose onClick={handleClose} />
 						</ContextualbarActions>

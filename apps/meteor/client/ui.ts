@@ -34,6 +34,7 @@ import { useUserInfoGroupRoomAction } from './hooks/roomActions/useUserInfoGroup
 import { useUserInfoRoomAction } from './hooks/roomActions/useUserInfoRoomAction';
 import { useVoIPRoomInfoRoomAction } from './hooks/roomActions/useVoIPRoomInfoRoomAction';
 import { useWebRTCVideoRoomAction } from './hooks/roomActions/useWebRTCVideoRoomAction';
+import { useRoomForwardTopicAction } from './hooks/roomActions/useRoomForwardTopicAction';
 import type { RoomToolboxActionConfig } from './views/room/contexts/RoomToolboxContext';
 import type { QuickActionsActionConfig } from './views/room/lib/quickActions';
 
@@ -69,6 +70,7 @@ export const roomActionHooks = [
 	useVoIPRoomInfoRoomAction,
 	useWebRTCVideoRoomAction,
 	useAppsRoomStarActions,
+	useRoomForwardTopicAction,
 ] satisfies (() => RoomToolboxActionConfig | undefined)[];
 
 export const quickActionHooks = [

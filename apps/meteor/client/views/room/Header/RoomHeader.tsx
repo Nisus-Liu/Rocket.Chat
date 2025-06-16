@@ -13,6 +13,7 @@ import RoomToolbox from './RoomToolbox';
 import Encrypted from './icons/Encrypted';
 import Favorite from './icons/Favorite';
 import Translate from './icons/Translate';
+import JumpToTopic from './icons/JumpToTopic';
 import { Header, HeaderAvatar, HeaderContent, HeaderContentRow, HeaderSubtitle, HeaderToolbar } from '../../../components/Header';
 import MarkdownText from '../../../components/MarkdownText';
 

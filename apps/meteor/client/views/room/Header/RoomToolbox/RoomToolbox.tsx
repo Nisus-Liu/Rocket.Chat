@@ -16,11 +16,34 @@ type RoomToolboxProps = {
 
 const RoomToolbox = ({ className }: RoomToolboxProps) => {
 	const { t } = useTranslation();
-
 	const toolbox = useRoomToolbox();
 	const { featuredActions, hiddenActions, visibleActions } = useRoomToolboxActions(toolbox);
 
 	const showKebabMenu = hiddenActions.length > 0;
+
+	// let extraSections = [
+	// 	{
+	// 		id: 'jump-topic',
+	// 		title: '',
+	// 		items: [
+	// 			{
+	// 				id: 'jump-to-topic',
+	// 				icon: 'jump',
+	// 				content: t('跳转到话题页'),
+	// 				onClick: () => {
+	// 					const router = toolbox.router;
+	// 					router.navigate({
+	// 						name: 'topics-detail',
+	// 						params: { id: toolbox.room.pmid },
+	// 						search: { drid: toolbox.room._id },
+	// 					});
+	// 				},
+	// 			},
+	// 		],
+	// 	},
+	// ];
+
+	// const allSections = [...hiddenActions, ...extraSections];
 
 	const renderDefaultToolboxItem = useEffectEvent(
 		({ id, className, index, icon, title, toolbox: { tab }, action, disabled, tooltip }: RenderToolboxItemParams) => {
@@ -57,6 +80,7 @@ const RoomToolbox = ({ className }: RoomToolboxProps) => {
 			{featuredActions.length > 0 && <HeaderToolbarDivider />}
 			{visibleActions.map(mapToToolboxItem)}
 			{showKebabMenu && <GenericMenu title={t('Options')} data-qa-id='ToolBox-Menu' sections={hiddenActions} placement='bottom-end' />}
+			{/* {showKebabMenu && <GenericMenu title={t('Options')} data-qa-id='ToolBox-Menu' sections={allSections} placement='bottom-end' />} */}
 		</>
 	);
 };
