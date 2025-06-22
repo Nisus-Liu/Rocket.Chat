@@ -78,6 +78,15 @@ const Thread = ({ tmid }: ThreadProps) => {
 		closeTab();
 	};
 
+	const handleJumpToTopic = () => {
+		const url = router.buildRoutePath({
+			name: 'topics-detail',
+			params: { id: tmid },
+			search: { rid: mainMessageQueryResult.data?.rid ?? '', type: 'thread' }
+		});
+		window.open(url, '_blank');
+	};
+
 	return (
 		<ContextualbarInnerContent>
 			{canExpand && expanded && <Modal.Backdrop onClick={handleBackdropClick} />}
@@ -125,15 +134,7 @@ const Thread = ({ tmid }: ThreadProps) => {
 							<ContextualbarAction
 								name='discussion'
 								title={t('Topic')}
-								onClick={() => {
-									// 讨论串工具栏加按钮跳转到话题页
-									// console.log('==thread forward topic', tmid);
-									const url = router.buildRoutePath({
-										name: 'topics-detail',
-										params: { id: tmid },
-									});
-									window.open(url, '_blank');
-								}}
+								onClick={handleJumpToTopic}
 							/>
 							<ContextualbarClose onClick={handleClose} />
 						</ContextualbarActions>

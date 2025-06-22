@@ -1,14 +1,14 @@
-import { Box, Button, Margins, TextAreaInput, Avatar, Divider, Icon } from '@rocket.chat/fuselage';
+import { Box, Button, Margins, TextAreaInput, Avatar, Divider, Icon, IconButton } from '@rocket.chat/fuselage';
 import { useTranslation, useRouter, useRouteParameter, useSearchParameter } from '@rocket.chat/ui-contexts';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 import { Page, PageContent, PageHeader } from '../../components/Page';
 import { useEndpoint } from '@rocket.chat/ui-contexts';
 import { useToastMessageDispatch } from '@rocket.chat/ui-contexts';
 import { useChat } from '../room/contexts/ChatContext';
 import ChatProvider from '../room/providers/ChatProvider';
-import type { IMessage } from '@rocket.chat/core-typings';
+import type { IMessage, PageMoreData, Comment, TopicDetail } from '@rocket.chat/core-typings';
 import { sdk } from '../../../app/utils/client/lib/SDKClient';
 import MessageContentBody from '../../components/message/MessageContentBody';
 import AttachmentAuthorName from '../../components/message/content/attachments/structure/AttachmentAuthorName';
@@ -20,41 +20,43 @@ import { useUserDisplayName } from '@rocket.chat/ui-client';
 import { dispatchToastMessage } from '/client/lib/toast';
 import { RoomProvider } from '../room';
 import { useGetMessageByID } from '../room/contextualBar/Threads/hooks/useGetMessageByID';
-
-interface Comment {
-	_id: string;
-	rid: string;
-	msg: string;
-	ts: Date;
-	u: {
-		_id: string;
-		name: string;
-	};
-	replies?: Comment[];
-	tlm?: string;
-	qlm?: string;
-	tmid?: string;
-	qmid?: string;
-	md?: any[];
-	attachments?: any[];
-}
-
-interface TopicDetail {
-	// _id: string;
-	rid: string;
-	drid?: string;
-	title: string;
-	detail: string;
-	ts: Date;
-	u: {
-		_id: string;
-		name: string;
-	};
-	comments: Comment[];
-	total: number;
-}
+import { useForceUpdate } from '/client/hooks/useForceUpdate';
+import type { Keys as IconName } from '@rocket.chat/icons';
 
 const COMMENTS_PER_PAGE = 2;
+
+
+const HintIconButton = ({
+	text,
+	preIcon,
+	postIcon,
+	onClick,
+	children,
+	small,
+	...props
+}: {
+	text?: string,
+	preIcon?: IconName,
+	postIcon?: IconName,
+	onClick: () => void,
+	children?: React.ReactNode,
+	small?: boolean,
+	[key: string]: any
+}) => {
+	return <>
+		<Box
+			fontScale={small ? "c1" : "c1"}
+			color="hint"
+			style={{ cursor: 'pointer' }}
+			onClick={onClick}
+			{...props}
+		>
+			{preIcon && <Icon name={preIcon} size="x16" marginInlineStart="x4" />}
+			{text || children}
+			{postIcon && <Icon name={postIcon} size="x16" marginInlineStart="x4" />}
+		</Box>
+	</>
+}
 
 /**
  * 评论消息box
@@ -160,14 +162,15 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 				<Box fontScale="c1" color="hint" display="flex" alignItems="center">
 					{new Date(comment.ts).toLocaleString()}
 					<Box marginInline="x8" color="hint">·</Box>
-					<Box
+					{/* <Box
 						fontScale="c1"
 						color="hint"
 						style={{ cursor: 'pointer' }}
 						onClick={() => setReplyInputing(!replyInputing)}
 					>
 						{replyInputing ? '取消' : '回复'}
-					</Box>
+					</Box> */}
+					<HintIconButton text={replyInputing ? '取消' : '回复'} onClick={() => setReplyInputing(!replyInputing)} />
 				</Box>
 			</Box>
 			{replyInputing && (
@@ -194,7 +197,7 @@ const TopicDetailPage = () => {
 	const router = useRouter();
 	const topicId = useRouteParameter('id');
 	let rid = useSearchParameter('rid');
-
+	const type = useSearchParameter('type');
 	// 使用 useGetMessageByID hook 获取消息
 	const getMessageByID = useGetMessageByID();
 	const { data: messageData } = useQuery({
@@ -235,14 +238,17 @@ const TopicDetailPage = () => {
 		username: string;
 	} | null>(null);
 	const [replyText, setReplyText] = useState('');
+	const [localTopic, setLocalTopic] = useState<TopicDetail>({} as TopicDetail);
 	const limit = COMMENTS_PER_PAGE;
+	const forceUpdate = useForceUpdate();
 
 	// 获取话题详情的接口
 	const getTopicDetail = useEndpoint('GET', '/v1/topics.discussion.detail');
 
 	// 获取话题详情
-	const { data, isLoading, refetch } = useQuery({
-		queryKey: ['topic', topicId, rid, currPageOffset1, currPageOffset2, direction, limit, lastUpdate],
+	const queryKey = ['topic', topicId, rid, currPageOffset1, currPageOffset2, direction, limit, lastUpdate];
+	const { data: topic, isLoading, refetch } = useQuery({
+		queryKey,
 		queryFn: async () => {
 			if (!rid) {
 				throw new Error('Room ID is required');
@@ -254,11 +260,16 @@ const TopicDetailPage = () => {
 				offset2: currPageOffset2 || undefined,
 				direction,
 				limit: limit,
+				type,
 			});
 			return result;
 		},
 		enabled: !!topicId && !!rid,
 	});
+
+	useEffect(() => {
+		setLocalTopic(topic);
+	}, [topic]);
 
 	const chat = useChat();
 	// 发表评论的mutation
@@ -267,6 +278,8 @@ const TopicDetailPage = () => {
 			const message = {
 				rid: rid,
 				msg: text,
+				tmid: localTopic.tmid,
+				qmid: localTopic.qmid,
 			} as IMessage
 			// 使用 sdk.call('sendMessage') 发送消息
 			await sdk.call('sendMessage', message);
@@ -295,9 +308,9 @@ const TopicDetailPage = () => {
 	};
 
 	const handleChangePage = (direction: 'prev' | 'next') => {
-		if (!data?.topic?.comments?.length) return;
-		const firstOne = data.topic.comments[0];
-		const lastOne = data.topic.comments[data.topic.comments.length - 1];
+		if (!localTopic?.comments?.length) return;
+		const firstOne = localTopic.comments[0];
+		const lastOne = localTopic.comments[localTopic.comments.length - 1];
 		setCurrPageOffset1(new Date(firstOne.ts).getTime());
 		setCurrPageOffset2(new Date(lastOne.ts).getTime());
 		setDirection(direction);
@@ -342,45 +355,68 @@ const TopicDetailPage = () => {
 	};
 
 	// 处理展开回复
-	const handleExpandReplies = async (comment: Comment) => {
-		const { _id: commentId, tlm, qlm } = comment;
+	const handleExpandReplies = async (comment: any) => {
+		const { _id: commentId, tlm, qlm, type } = comment;
 		const result = await getReplies({
-			commentId,
+			commentId: type == 'discussion' ? comment.lmid : commentId,
 			tlm,
 			qlm,
+			type,
 		});
-		const newReplies = result.replies || [];
-		console.log('==handleExpandReplies newReplies', newReplies);
-		setExpandedReplies({
-			commentId,
-			replies: newReplies,
-			offset: newReplies.length > 0 ? new Date(newReplies[newReplies.length - 1].ts).getTime() : undefined,
-			hasMore: newReplies.length === 5,
-		});
+		// const newReplies = result.replies || [];
+		// console.log('==handleExpandReplies newReplies', newReplies);
+		// setExpandedReplies({
+		// 	commentId,
+		// 	replies: newReplies,
+		// 	offset: newReplies.length > 0 ? new Date(newReplies[newReplies.length - 1].ts).getTime() : undefined,
+		// 	hasMore: newReplies.length === 5,
+		// });
 	};
 
-	// 处理加载更多回复
-	const handleLoadMoreReplies = async (comment: Comment) => {
-		if (!expandedReplies) return;
-		const { _id: commentId, tlm, qlm } = comment;
+	// 处理加载更多回复 - 使用响应式缓存更新
+	const handleLoadMoreReplies = async (comment: any, type: 'topic' | 'comment') => {
+		debugger;
+		if (!comment.reply) {
+			comment.reply = {
+				list: [],
+				hasMore: false,
+				show: false,
+				offset: 0,
+			};
+		}
+
+		const { tlm, qlm } = comment;
+		const commentId = type == 'topic' ? comment.qmid : comment._id;
+
 		const result = await getReplies({
 			commentId,
-			offset: expandedReplies.offset,
+			offset: comment.reply?.offset,
 			tlm,
 			qlm,
+			type,
 		});
-		const newReplies = result.replies || [];
-		setExpandedReplies({
-			...expandedReplies,
-			replies: [...expandedReplies.replies, ...newReplies],
-			offset: newReplies.length > 0 ? new Date(newReplies[newReplies.length - 1].ts).getTime() : expandedReplies.offset,
-			hasMore: newReplies.length === 5,
-		});
+
+		comment.reply = {
+			...comment.reply,
+			...result,
+			list: [...comment.reply.list, ...result.list],
+			show: true,
+		}
+		forceUpdate();
+		setTimeout(() => {
+			console.log("==handleLoadMoreReplies", localTopic, topic)
+		})
 	};
 
-	// 处理收起回复
-	const handleCollapseReplies = () => {
-		setExpandedReplies(null);
+	// 处理收起回复 - 使用响应式缓存更新
+	const handleCollapseReplies = (comment: any) => {
+		comment.reply = {
+			list: [],
+			hasMore: false,
+			show: false,
+			offset: 0,
+		};
+		forceUpdate();
 	};
 
 	if (isLoading) {
@@ -396,10 +432,8 @@ const TopicDetailPage = () => {
 		);
 	}
 
-	const topic = data?.topic as unknown as TopicDetail;
-
 	if (!rid) {
-		return;
+		return null;
 	}
 
 	return (
@@ -407,7 +441,7 @@ const TopicDetailPage = () => {
 			<ChatProvider>
 				<Page>
 					<PageHeader
-						title={topic?.title}
+						title={localTopic?.title}
 						{...(!document.referrer ? {} : { onClickBack: () => router.navigate(-1) })}
 					>
 						<Box data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
@@ -426,14 +460,35 @@ const TopicDetailPage = () => {
 								{/* 话题基本信息 */}
 								<Box display="flex" flexDirection="column" marginBlock="x8">
 									<Box display="flex" alignItems="center" marginBlock="x8">
-										<Avatar size="x40" url={`/avatar/${topic?.u?.name}`} />
+										<Avatar size="x40" url={`/avatar/${localTopic?.u?.name}`} />
 										<Box>
-											<Box fontScale="h4">{topic?.u?.name}</Box>
+											<Box fontScale="h4">{localTopic?.u?.name}</Box>
 											<Box fontScale="c1" color="hint">
-												{new Date(topic?.ts).toLocaleString()}
+												{new Date(localTopic?.ts).toLocaleString()}
 											</Box>
 										</Box>
 									</Box>
+									{localTopic?.hasReply && ((localTopic.reply?.show) ? (
+										<>
+											<HintIconButton preIcon="chevron-up" onClick={() => handleCollapseReplies(localTopic)}>
+												{'收起回复'}
+											</HintIconButton >
+											<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
+												{localTopic.reply?.list?.map((reply: Comment) => (
+													<CommentMsgBox key={reply._id} comment={reply} />
+												))}
+												{localTopic.reply?.hasMore && (
+													<HintIconButton small preIcon="chevron-down" onClick={() => handleLoadMoreReplies(localTopic, 'topic')}>
+														{'加载更多'}
+													</HintIconButton>
+												)}
+											</Box>
+										</>
+									) : (
+										<HintIconButton small preIcon="thread" onClick={() => handleLoadMoreReplies(localTopic, 'topic')}>
+											{'展开回复'}
+										</HintIconButton>
+									))}
 								</Box>
 
 								<Divider />
@@ -441,46 +496,32 @@ const TopicDetailPage = () => {
 								{/* 评论列表 */}
 								<Box display="flex" flexDirection="column" marginBlock="x16">
 									<Box fontScale="h4">{'评论'}</Box>
-									<Box display="flex" marginBlock="x8">
-										<Button onClick={handleFirstPage}>
-											首页
-										</Button>
-										<Button onClick={handlePrevPage}>
-											前页
-										</Button>
-										<Button onClick={handleNextPage}>
-											后页
-										</Button>
-									</Box>
-									{topic?.comments?.map((comment) => (
+									{localTopic?.comments?.map((comment: Comment) => (
 										<Box key={comment._id} display="flex" flexDirection="column" marginBlock="x8">
 											<CommentMsgBox comment={comment} />
 											{/* tlm 非空, 则说明这是个讨论串的头消息, 显示"展开回复", 点击加载 */
 												(comment.tlm || comment.qlm) && (
 													<Box>
-														{expandedReplies?.commentId === comment._id ? (
+														{comment.reply?.show ? (
 															<>
-																<Button small onClick={handleCollapseReplies}>
-																	<Icon name="chevron-up" size="x16" marginInlineEnd={4} />
+																<HintIconButton small preIcon="chevron-up" onClick={() => handleCollapseReplies(comment)}>
 																	{'收起回复'}
-																</Button>
+																</HintIconButton>
 																<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
-																	{expandedReplies.replies?.map((reply) => (
+																	{comment.reply?.list?.map((reply: Comment) => (
 																		<CommentMsgBox key={reply._id} comment={reply} />
 																	))}
-																	{expandedReplies.hasMore && (
-																		<Button small onClick={() => handleLoadMoreReplies(comment)}>
-																			<Icon name="chevron-down" size="x16" marginInlineEnd={4} />
+																	{comment.reply?.hasMore && (
+																		<HintIconButton small preIcon="chevron-down" onClick={() => handleLoadMoreReplies(comment, 'comment')}>
 																			{'加载更多'}
-																		</Button>
+																		</HintIconButton>
 																	)}
 																</Box>
 															</>
 														) : (
-															<Button small onClick={() => handleExpandReplies(comment)}>
-																<Icon name="thread" size="x16" marginInlineEnd={4} />
+															<HintIconButton small preIcon="thread" onClick={() => handleLoadMoreReplies(comment, 'comment')}>
 																{'展开回复'}
-															</Button>
+															</HintIconButton>
 														)}
 													</Box>
 												)}
@@ -501,6 +542,19 @@ const TopicDetailPage = () => {
 											{'发表评论'}
 										</Button>
 									</Box>
+								</Box>
+
+								{/* 分页 */}
+								<Box display="flex" marginBlock="x8">
+									<Button onClick={handleFirstPage}>
+										首页
+									</Button>
+									<Button onClick={handlePrevPage}>
+										前页
+									</Button>
+									<Button onClick={handleNextPage}>
+										后页
+									</Button>
 								</Box>
 							</Margins>
 						</Box>

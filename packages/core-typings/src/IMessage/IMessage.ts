@@ -233,6 +233,8 @@ export interface IMessage extends IRocketChatRecord {
 	qlm?: Date; // Quote chain head message timestamp
 	qm_count?: number; // Quote chain message count
 	qmid?: string; // Quote chain head message id
+	qmpid?: string; // Quote chain parent message id
+	qmlvl?: number; // Quote chain level
 
 	customFields?: IMessageCustomFields;
 

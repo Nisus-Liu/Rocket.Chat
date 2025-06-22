@@ -6,6 +6,7 @@ import { SortDirection } from 'mongodb';
 import { API } from '../api';
 import { getPaginationItems } from '../helpers/getPaginationItems';
 import { executeSendMessage } from '../../../lib/server/methods/sendMessage';
+import type { PageMoreData, Comment, TopicDetail } from '@rocket.chat/core-typings';
 
 declare module '@rocket.chat/rest-typings' {
 	// eslint-disable-next-line @typescript-eslint/naming-convention
@@ -46,19 +47,27 @@ declare module '@rocket.chat/rest-typings' {
 				offset1?: number;
 				offset2?: number;
 				direction?: string;
-				limit?: number
+				limit?: number,
+				type?: string
 			}) => {
-				topic: {
-					rid: string;
-					drid: string;
-					title: string;
-					detail: string;
+				rid: string;
+				drid: string;
+				title: string;
+				detail: string;
+				ts: Date;
+				u: {
+					_id: string;
+					name: string;
+				};
+				comments: Array<{
+					_id: string;
+					msg: string;
 					ts: Date;
 					u: {
 						_id: string;
 						name: string;
 					};
-					comments: Array<{
+					replies?: Array<{
 						_id: string;
 						msg: string;
 						ts: Date;
@@ -66,20 +75,10 @@ declare module '@rocket.chat/rest-typings' {
 							_id: string;
 							name: string;
 						};
-						replies?: Array<{
-							_id: string;
-							msg: string;
-							ts: Date;
-							u: {
-								_id: string;
-								name: string;
-							};
-						}>;
-						tlm: Date;
 					}>;
-					total: number;
-				};
-				lastUpdate: string;
+					tlm: Date;
+				}>;
+				total: number;
 			};
 		};
 		'/v1/topics.discussion.comment': {
@@ -103,9 +102,8 @@ declare module '@rocket.chat/rest-typings' {
 				limit?: number
 				tlm?: any;
 				qlm?: any;
-			}) => {
-				replies: any[];
-			};
+				type?: string;
+			}) => PageMoreData<Comment>;
 		};
 	}
 }
@@ -320,7 +318,8 @@ API.v1.addRoute(
 				offset1: offset1Str,
 				offset2: offset2Str,
 				direction,
-				limit = DEFAULT_PAGE_SIZE
+				limit = DEFAULT_PAGE_SIZE,
+				type = 'discussion', // 'discussion' or 'thread' or 'quote'
 			} = this.queryParams;
 
 			check(topicId, String);
@@ -343,30 +342,110 @@ API.v1.addRoute(
 				throw new Meteor.Error('error-no-permission-to-view-topic', 'No permission to view topic');
 			}
 
-			// 讨论形式的话题是room实体, 在 rocketchat_room 表里存有room信息, 得出话题标题(fname字段)和详情(topic字段)
-			const topicRoom = await Rooms.findOne({
-				_id: rid,
-			});
+			const getTopicInfo = async (type: string) => {
+				const topicInfo: any = { type };
+				let leaderMessage: any;
+				switch (type) {
+					case 'discussion':
+						const topicRoom = await Rooms.findOne({
+							_id: rid,
+						});
+						if (!topicRoom) {
+							throw new Meteor.Error('error-invalid-topic', `Invalid topic: ${topicId}`);
+						}
+						leaderMessage = await Messages.findOne({
+							drid: topicId,
+						});
+						if (!leaderMessage) {
+							throw new Meteor.Error('error-invalid-topic', `Invalid topic: ${topicId}`);
+						}
+						topicInfo.rid = topicRoom._id;
+						topicInfo.title = topicRoom.fname;
+						topicInfo.detail = topicRoom.topic;
+						topicInfo.attachments = leaderMessage.attachments;
+						topicInfo.ts = topicRoom.ts;
+						topicInfo.u = topicRoom.u;
+						break;
+					default:
+						leaderMessage = await Messages.findOne({
+							_id: topicId,
+						});
+						if (!leaderMessage) {
+							throw new Meteor.Error('error-invalid-topic', `Invalid topic: ${topicId}`);
+						}
+						topicInfo.rid = leaderMessage.rid;
+						topicInfo.title = leaderMessage.msg;
+						topicInfo.detail = leaderMessage.msg; // ??
+						topicInfo.ts = leaderMessage.ts;
+						topicInfo.u = leaderMessage.u;
+				}
+				// 头消息有引用串, 则有回复
+				if (leaderMessage) {
+					topicInfo.lmid = leaderMessage._id; // 头消息id
+					topicInfo.hasReply = leaderMessage.qmid || leaderMessage.qlm;
+					topicInfo.hasReply && (topicInfo.qmid = leaderMessage.qmid || leaderMessage._id);
+				}
 
-			if (!topicRoom) {
-				throw new Meteor.Error('error-invalid-topic', 'Invalid topic');
+				return topicInfo;
 			}
 
+			const buildCommentsQuery4Discussion = async (topicInfo: any) => {
+				// 构建评论的查询条件
+				const query = {
+					rid: topicInfo.rid,
+					msg: { $ne: '' },
+					t: { $ne: 'au' }, // 排除 Add User 系统消息
+					tmid: { $exists: false }, // 排除非讨论串头消息
+					qmid: { $exists: false }, // 排除非引用头消息
+				} as any;
 
-			// 构建查询条件
-			const query = {
-				rid: rid,
-				msg: { $ne: '' },
-				t: { $ne: 'au' }, // 排除 Add User 系统消息
-				// 排除非讨论串头消息, 排除非引用头消息, 但要考虑非引用头但是是讨论串头的情况, qmid非空且tlm非空 要保留
-				$or: [
-					{ tmid: { $exists: false }, qmid: { $exists: false } },
-					{ tlm: { $exists: true } },
-					{ qlm: { $exists: true } },
-				]
-			} as any;
+				return query;
+			}
 
-			const total = await Messages.countDocuments(query);
+			const buildCommentsQuery4Thread = async (topicInfo: any) => {
+				// 构建评论的查询条件
+				const query = {
+					// rid: rid,
+					msg: { $ne: '' },
+					t: { $ne: 'au' }, // 排除 Add User 系统消息
+					tmid: topicId,
+					qmid: { $exists: false }, // 后面要考虑讨论串头消息是也是引用的情况
+				} as any;
+
+				return query;
+			}
+
+			const buildCommentsQuery4Quote = async (topicInfo: any) => {
+				// 构建评论的查询条件
+				const query = {
+					// rid: rid,
+					msg: { $ne: '' },
+					t: { $ne: 'au' }, // 排除 Add User 系统消息
+					qmid: topicId,
+					qlm: { $exists: false },
+				} as any;
+
+				return query;
+			}
+
+			const buildCommentsQuery = async (topicInfo: any) => {
+				switch (type as string) {
+					case 'discussion':
+						return await buildCommentsQuery4Discussion(topicInfo);
+					case 'thread':
+						return await buildCommentsQuery4Thread(topicInfo);
+					case 'quote':
+						return await buildCommentsQuery4Quote(topicInfo);
+					default:
+						throw new Meteor.Error('error-invalid-type', `Invalid type: '${type}'`);
+				}
+			}
+
+			const topicInfo: any = await getTopicInfo(type);
+			const commentsQuery = await buildCommentsQuery(topicInfo);
+			// console.log('==commentsQuery', type, "==", commentsQuery);
+
+			const total = await Messages.countDocuments(commentsQuery);
 
 			// 根据导航方向和时间戳构建查询
 			const findOptions = {
@@ -390,14 +469,14 @@ API.v1.addRoute(
 
 			// 获取第一页的评论
 			const getFirstPage = async () => {
-				const firstPageQuery = { ...query };
+				const firstPageQuery = { ...commentsQuery };
 				delete firstPageQuery.ts;
 				return await Messages.find(firstPageQuery, { ...findOptions, sort: TS_VIEW_DESC }).toArray();
 			};
 
 			// 获取最后一页的评论
 			const getLastPage = async () => {
-				const lastPageQuery = { ...query };
+				const lastPageQuery = { ...commentsQuery };
 				delete lastPageQuery.ts;
 				const options = { ...findOptions, sort: TS_VIEW_ASC };
 				const comments = await Messages.find(lastPageQuery, options).toArray();
@@ -414,17 +493,17 @@ API.v1.addRoute(
 				// 正常排序取反(这里即升序), 取大于 offset1 的前limit条
 				findOptions.sort = TS_VIEW_ASC;
 				if (offset1) {
-					query.ts = { $gt: offset1 };
+					commentsQuery.ts = { $gt: offset1 };
 				}
-				comments = await Messages.find(query, findOptions).toArray();
+				comments = await Messages.find(commentsQuery, findOptions).toArray();
 				// 上一页时要翻转结果
 				comments.reverse();
 				// console.log('==prev comments', query, findOptions, comments);
 			} else if (direction === 'next') { // 下一页
 				if (offset2) {
-					query.ts = { $lt: offset2 };
+					commentsQuery.ts = { $lt: offset2 };
 				}
-				comments = await Messages.find(query, findOptions).toArray();
+				comments = await Messages.find(commentsQuery, findOptions).toArray();
 				// console.log('==next comments', query, findOptions, comments);
 			}
 
@@ -438,29 +517,23 @@ API.v1.addRoute(
 				} else if (direction === 'next') {
 					// 下一页到头，返回最后一页  问题: 最后一页不够limit, 直接getLastPage会返回limit个, 造成混乱, 诉求: 刚才看到几条, 补偿返回几条
 					// comments = await getLastPage();
-					query.ts = { $lte: offset1, $gte: offset2 };
+					commentsQuery.ts = { $lte: offset1, $gte: offset2 };
 					findOptions.sort = TS_VIEW_DESC;
-					comments = await Messages.find(query, findOptions).toArray();
+					comments = await Messages.find(commentsQuery, findOptions).toArray();
 					// console.log('==next comments2', comments);
 				}
 			}
 
+			// topic 的回复
+			if (topicInfo.hasReply) {
+				topicInfo.reply = await queryReplies(topicInfo.qmid, 'topic', 0, DEFAULT_REPLIES_SIZE);
+			}
+
 			return API.v1.success({
-				topic: {
-					// _id: topicRoom._id,
-					rid: topicRoom._id,
-					rid: rid,
-					title: topicRoom.fname,
-					detail: topicRoom.topic,
-					ts: topicRoom.ts,
-					ts_ms: topicRoom.ts?.getTime(), // 为话题添加毫秒时间戳
-					u: {
-						_id: topicRoom.u._id,
-						name: topicRoom.u.name
-					},
-					comments,
-					total: total,
-				},
+				...topicInfo,
+				ts_ms: topicInfo.ts?.getTime(), // 为话题添加毫秒时间戳
+				comments,
+				total: total,
 			});
 		}
 	}
@@ -517,13 +590,66 @@ API.v1.addRoute(
 	}
 );
 
+const queryReplies = async (
+	commentId: string,
+	commentType: 'comment' | 'topic' = 'comment',
+	offset: string | number,
+	limit: number,
+	roomIds?: string[]
+) => {
+	const query: any = {};
+	if (roomIds) {
+		query.rid = { $in: roomIds };
+	}
+
+	// topic 的回复, 引用串
+	if (commentType === 'topic') {
+		query.qmid = commentId;
+	}
+
+	if (offset) {
+		query.ts = { $gt: new Date(Number(offset)) };
+	}
+
+	const replies = await Messages.find(
+		query,
+		{
+			projection: {
+				_id: 1,
+				rid: 1,
+				tlm: 1,
+				tmid: 1,
+				qlm: 1,
+				qmid: 1,
+				qm_count: 1,
+				drid: 1,
+				msg: 1,
+				ts: 1,
+				u: 1,
+				replies: 1,
+				md: 1,
+				attachments: 1,
+			},
+			limit: Number(limit),
+			sort: TS_VIEW_ASC // 评论升序
+		}
+	).toArray();
+
+	return {
+		list: replies,
+		hasMore: replies.length === limit,
+		show: true,
+		offset: replies.length > 0 ? new Date(replies[replies.length - 1].ts).getTime() : undefined,
+	} as PageMoreData<Comment>;
+}
+
 
 API.v1.addRoute(
 	'topics.discussion.replies',
 	{ authRequired: true },
 	{
 		async get() {
-			const { commentId, tlm, qlm, offset, limit = DEFAULT_REPLIES_SIZE } = this.queryParams;
+			const { commentId, tlm, qlm, offset, limit = DEFAULT_REPLIES_SIZE, type = 'comment' } = this.queryParams;
 			check(commentId, String);
 
 			const user = await Meteor.userAsync();
@@ -532,6 +658,11 @@ API.v1.addRoute(
 			}
 
 			const roomIds = await getUserRoomIds(user._id);
+
+			if (type === 'topic') {
+				const ret = await queryReplies(commentId, type, offset, limit, roomIds);
+				return API.v1.success(ret);
+			}
 
 			// 获取讨论消息
 			const query = {
@@ -583,9 +714,14 @@ API.v1.addRoute(
 				}
 			).toArray();
 
-			return API.v1.success({
-				replies,
-			});
+			const ret = {
+				list: replies,
+				hasMore: replies.length === limit,
+				show: true,
+				offset: replies.length > 0 ? new Date(replies[replies.length - 1].ts).getTime() : undefined,
+			};
+
+			return API.v1.success(ret);
 		}
 	}
 );

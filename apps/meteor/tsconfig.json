@@ -38,7 +38,7 @@
 		"./.storybook/**/*",
 		"./jest.config.ts",
 		"./.scripts/**/*"
-	],
+, "../../packages/core-typings/src/topic/topics.ts"	],
 	"exclude": [
 		"**/node_modules/**",
 		"./.meteor/**",

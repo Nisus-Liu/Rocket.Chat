@@ -70,3 +70,4 @@ autoupdate@2.0.0
 zodern:types
 zodern:standard-minifier-js
 ostrio:flow-router-extra
+react-fast-refresh

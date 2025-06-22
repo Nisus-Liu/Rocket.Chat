@@ -28,7 +28,7 @@ export const useRoomForwardTopicAction = () => {
                 const url = router.buildRoutePath({
                     name: 'topics-detail',
                     params: { id: room._id },
-                    search: { rid: room._id}
+                    search: { rid: room._id, type: 'discussion' }
                 });
                 window.open(url, '_blank');
             },

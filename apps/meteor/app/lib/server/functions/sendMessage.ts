@@ -319,6 +319,10 @@ async function handleQuoteMessageChain(message: IMessage) {
 				// This is part of an existing quote chain
 				message.qmid = quotedMessage.qmid;
 			}
+
+			message.qmpid = quotedMessage._id; // 被引用消息的 _id, parent id
+			message.qmlvl = (quotedMessage.qmlvl || 0) + 1; // 引用层级
+
 			await Messages.updateOne(
 				// Update the quote count in the head message
 				{ _id: message.qmid },

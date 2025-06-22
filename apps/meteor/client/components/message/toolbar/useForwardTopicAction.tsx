@@ -27,7 +27,7 @@ export const useForwardTopicAction = (
 			const url = router.buildRoutePath({
 				name: 'topics-detail',
 				params: { id: qmid },
-				search: { rid: message.rid }
+				search: { rid: message.rid, type: 'quote' }
 			});
 			window.open(url, '_blank');
 		},
