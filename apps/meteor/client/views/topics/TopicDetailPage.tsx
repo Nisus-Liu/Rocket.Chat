@@ -57,6 +57,73 @@ const HintIconButton = ({
 		</Box>
 	</>
 }
+/**
+ * 回复类型: 评论 or 回复
+ * 消息类型: 引用串\讨论串\讨论
+ * 回复的消息类型 + 回复类型
+ */
+const handleReply = async({ topic, replyType, replyContent, topicLevel}: any) => {
+	const chat = useChat();
+	if (!chat?.data?.composeMessage) {
+		dispatchToastMessage({ type: 'error', message: '发送消息功能不可用' });
+		return;
+	}
+
+	// 假定, topic 自身的回复, 只是引用串. 事实也就是哪些引用串无处安放, 把他们当做topic的补充信息
+	// 1. topic 的回复, 则当引用处理
+	// 2. 纯引用串, 评论或回复, 当引用处理
+	let usingQuote = topicLevel == 'topic' && replyType == 'reply';
+	usingQuote = usingQuote || (!topic.tlm && !topic.tmid && (topic.qmid || topic.qlm));
+
+	try {
+		let message: IMessage;
+		let composedMessage = undefined;
+		// if ((comment.tmid && comment.tmid !== comment._id)
+		// 	|| (!comment.tlm && (comment.qlm || comment.qmid))) {
+		// 	// 讨论串非头消息 或 引用消息(头或非头, 但不是讨论串头)  都需要处理被引用消息
+		// 	composedMessage = await chat.data.composeMessage(replyContent, {
+		// 		sendToChannel: true,
+		// 		quotedMessages: [{ ...comment }],
+		// 		originalMessage: null,
+		// 	});
+		// }
+		if (usingQuote) {
+			composedMessage = await chat.data.composeMessage(replyContent, {
+				sendToChannel: true,
+				quotedMessages: [{ ...topic }],
+				originalMessage: null,
+			});
+		}
+
+		message = {
+			rid: replyContent.rid,
+			msg: replyContent, // 放前面, 避免覆盖掉引用的特殊格式msg
+			...composedMessage,
+		} as IMessage;
+		// 考虑有些消息既是讨论串又是引用串, 所以需要同时带上tmid和qmid
+		if (topic.tlm || topic.tmid) {
+			// 回复讨论串消息
+			message.tmid = topic.tmid || topic._id;
+		}
+		if (topic.qlm || topic.qmid) {
+			// 回复引用消息
+			message.qmid = topic.qmid || topic._id;
+		}
+		if (!message.tmid && !message.qmid) {
+			dispatchToastMessage({ type: 'error', message: '暂仅支持回复讨论串和引用串的消息' });
+			return;
+		}
+
+		await sdk.call('sendMessage', message);
+
+		// setReplyInputing(false);
+		// setReplyText('');
+		dispatchToastMessage({ type: 'success', message: '回复成功' });
+		return true;
+	} catch (error: any) {
+		dispatchToastMessage({ type: 'error', message: error.message });
+	}
+};
 
 /**
  * 评论消息box
@@ -70,50 +137,56 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 	const chat = useChat();
 
 	const handleSubmitReply = async () => {
-		if (!chat?.data?.composeMessage) {
-			dispatchToastMessage({ type: 'error', message: '发送消息功能不可用' });
-			return;
-		}
+		// if (!chat?.data?.composeMessage) {
+		// 	dispatchToastMessage({ type: 'error', message: '发送消息功能不可用' });
+		// 	return;
+		// }
 
-		try {
-			let message: IMessage;
-			let composedMessage = undefined;
-			if ((comment.tmid && comment.tmid !== comment._id)
-				|| (!comment.tlm && (comment.qlm || comment.qmid))) {
-				// 讨论串非头消息 或 引用消息(头或非头, 但不是讨论串头)  都需要处理被引用消息
-				composedMessage = await chat.data.composeMessage(replyText, {
-					sendToChannel: true,
-					quotedMessages: [{ ...comment }],
-					originalMessage: null,
-				});
-			}
-			message = {
-				rid: comment.rid,
-				msg: replyText, // 放前面, 避免覆盖掉引用的特殊格式msg
-				...composedMessage,
-			} as IMessage;
-			// 考虑有些消息既是讨论串又是引用串, 所以需要同时带上tmid和qmid
-			if (comment.tlm || comment.tmid) {
-				// 回复讨论串消息
-				message.tmid = comment.tmid || comment._id;
-			}
-			if (comment.qlm || comment.qmid) {
-				// 回复引用消息
-				message.qmid = comment.qmid || comment._id;
-			}
-			if (!message.tmid && !message.qmid) {
-				dispatchToastMessage({ type: 'error', message: '暂仅支持回复讨论串和引用串的消息' });
-				return;
-			}
+		// try {
+		// 	let message: IMessage;
+		// 	let composedMessage = undefined;
+		// 	if ((comment.tmid && comment.tmid !== comment._id)
+		// 		|| (!comment.tlm && (comment.qlm || comment.qmid))) {
+		// 		// 讨论串非头消息 或 引用消息(头或非头, 但不是讨论串头)  都需要处理被引用消息
+		// 		composedMessage = await chat.data.composeMessage(replyText, {
+		// 			sendToChannel: true,
+		// 			quotedMessages: [{ ...comment }],
+		// 			originalMessage: null,
+		// 		});
+		// 	}
+		// 	message = {
+		// 		rid: comment.rid,
+		// 		msg: replyText, // 放前面, 避免覆盖掉引用的特殊格式msg
+		// 		...composedMessage,
+		// 	} as IMessage;
+		// 	// 考虑有些消息既是讨论串又是引用串, 所以需要同时带上tmid和qmid
+		// 	if (comment.tlm || comment.tmid) {
+		// 		// 回复讨论串消息
+		// 		message.tmid = comment.tmid || comment._id;
+		// 	}
+		// 	if (comment.qlm || comment.qmid) {
+		// 		// 回复引用消息
+		// 		message.qmid = comment.qmid || comment._id;
+		// 	}
+		// 	if (!message.tmid && !message.qmid) {
+		// 		dispatchToastMessage({ type: 'error', message: '暂仅支持回复讨论串和引用串的消息' });
+		// 		return;
+		// 	}
 
-			await sdk.call('sendMessage', message);
+		// 	await sdk.call('sendMessage', message);
 
-			setReplyInputing(false);
-			setReplyText('');
-			dispatchToastMessage({ type: 'success', message: '回复成功' });
-		} catch (error: any) {
-			dispatchToastMessage({ type: 'error', message: error.message });
-		}
+		// 	setReplyInputing(false);
+		// 	setReplyText('');
+		// 	dispatchToastMessage({ type: 'success', message: '回复成功' });
+		// } catch (error: any) {
+		// 	dispatchToastMessage({ type: 'error', message: error.message });
+		// }
+
+		handleReply({
+			topic: comment,
+			replyType: 'reply',
+			replyContent: replyText,
+		})
 	};
 
 	return (
@@ -275,14 +348,27 @@ const TopicDetailPage = () => {
 	// 发表评论的mutation
 	const { mutate: submitComment } = useMutation({
 		mutationFn: async (text: string) => {
-			const message = {
-				rid: rid,
-				msg: text,
-				tmid: localTopic.tmid,
-				qmid: localTopic.qmid,
-			} as IMessage
-			// 使用 sdk.call('sendMessage') 发送消息
-			await sdk.call('sendMessage', message);
+			// const message = {
+			// 	rid: rid,
+			// 	msg: text,
+			// 	tmid: localTopic.tmid,
+			// 	qmid: localTopic.qmid,
+			// } as IMessage
+			// // 使用 sdk.call('sendMessage') 发送消息
+			// await sdk.call('sendMessage', message);
+
+			handleReply({
+				topic: {
+					rid: rid,
+					tlm: localTopic.tlm,
+					tmid: localTopic.tmid,
+					qlm: localTopic.qlm,
+					qmid: localTopic.qmid,
+				},
+				topicLevel: 'topic',
+				replyType: 'comment',
+				replyContent: text,
+			})
 		},
 		onSuccess: () => {
 			setNewComment('');
