@@ -1,4 +1,3 @@
-
 /**
  * 适用于滚动翻页的场景
  */
@@ -44,4 +43,10 @@ export interface TopicDetail {
 	hasReply?: boolean;
 	reply?: PageMoreData<Comment>;
 	qmid?: string;
+	tlm?: string;
+	tmid?: string;
+	qlm?: string;
 } 
+
+
+export type TopicType = 'discussion' | 'thread' | 'quote'

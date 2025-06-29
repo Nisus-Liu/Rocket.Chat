@@ -8,7 +8,7 @@ import { useEndpoint } from '@rocket.chat/ui-contexts';
 import { useToastMessageDispatch } from '@rocket.chat/ui-contexts';
 import { useChat } from '../room/contexts/ChatContext';
 import ChatProvider from '../room/providers/ChatProvider';
-import type { IMessage, PageMoreData, Comment, TopicDetail } from '@rocket.chat/core-typings';
+import type { IMessage, PageMoreData, Comment, TopicDetail, TopicType } from '@rocket.chat/core-typings';
 import { sdk } from '../../../app/utils/client/lib/SDKClient';
 import MessageContentBody from '../../components/message/MessageContentBody';
 import AttachmentAuthorName from '../../components/message/content/attachments/structure/AttachmentAuthorName';
@@ -21,26 +21,29 @@ import { dispatchToastMessage } from '/client/lib/toast';
 import { RoomProvider } from '../room';
 import { useGetMessageByID } from '../room/contextualBar/Threads/hooks/useGetMessageByID';
 import { useForceUpdate } from '/client/hooks/useForceUpdate';
+import { useReplyHandler } from '/client/hooks/useReplyHandler';
 import type { Keys as IconName } from '@rocket.chat/icons';
 
 const COMMENTS_PER_PAGE = 2;
 
 
-const HintIconButton = ({
+const MyIconButton = ({
 	text,
 	preIcon,
 	postIcon,
 	onClick,
 	children,
 	small,
+	color = "hint",
 	...props
 }: {
 	text?: string,
 	preIcon?: IconName,
 	postIcon?: IconName,
-	onClick: () => void,
+	onClick?: () => void,
 	children?: React.ReactNode,
 	small?: boolean,
+	color?: string,
 	[key: string]: any
 }) => {
 	return <>
@@ -57,73 +60,6 @@ const HintIconButton = ({
 		</Box>
 	</>
 }
-/**
- * 回复类型: 评论 or 回复
- * 消息类型: 引用串\讨论串\讨论
- * 回复的消息类型 + 回复类型
- */
-const handleReply = async({ topic, replyType, replyContent, topicLevel}: any) => {
-	const chat = useChat();
-	if (!chat?.data?.composeMessage) {
-		dispatchToastMessage({ type: 'error', message: '发送消息功能不可用' });
-		return;
-	}
-
-	// 假定, topic 自身的回复, 只是引用串. 事实也就是哪些引用串无处安放, 把他们当做topic的补充信息
-	// 1. topic 的回复, 则当引用处理
-	// 2. 纯引用串, 评论或回复, 当引用处理
-	let usingQuote = topicLevel == 'topic' && replyType == 'reply';
-	usingQuote = usingQuote || (!topic.tlm && !topic.tmid && (topic.qmid || topic.qlm));
-
-	try {
-		let message: IMessage;
-		let composedMessage = undefined;
-		// if ((comment.tmid && comment.tmid !== comment._id)
-		// 	|| (!comment.tlm && (comment.qlm || comment.qmid))) {
-		// 	// 讨论串非头消息 或 引用消息(头或非头, 但不是讨论串头)  都需要处理被引用消息
-		// 	composedMessage = await chat.data.composeMessage(replyContent, {
-		// 		sendToChannel: true,
-		// 		quotedMessages: [{ ...comment }],
-		// 		originalMessage: null,
-		// 	});
-		// }
-		if (usingQuote) {
-			composedMessage = await chat.data.composeMessage(replyContent, {
-				sendToChannel: true,
-				quotedMessages: [{ ...topic }],
-				originalMessage: null,
-			});
-		}
-
-		message = {
-			rid: replyContent.rid,
-			msg: replyContent, // 放前面, 避免覆盖掉引用的特殊格式msg
-			...composedMessage,
-		} as IMessage;
-		// 考虑有些消息既是讨论串又是引用串, 所以需要同时带上tmid和qmid
-		if (topic.tlm || topic.tmid) {
-			// 回复讨论串消息
-			message.tmid = topic.tmid || topic._id;
-		}
-		if (topic.qlm || topic.qmid) {
-			// 回复引用消息
-			message.qmid = topic.qmid || topic._id;
-		}
-		if (!message.tmid && !message.qmid) {
-			dispatchToastMessage({ type: 'error', message: '暂仅支持回复讨论串和引用串的消息' });
-			return;
-		}
-
-		await sdk.call('sendMessage', message);
-
-		// setReplyInputing(false);
-		// setReplyText('');
-		dispatchToastMessage({ type: 'success', message: '回复成功' });
-		return true;
-	} catch (error: any) {
-		dispatchToastMessage({ type: 'error', message: error.message });
-	}
-};
 
 /**
  * 评论消息box
@@ -134,7 +70,7 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 	const repliedUserDisplayName = firstAttachment && useUserDisplayName({ name: firstAttachment.name, username: firstAttachment.username || firstAttachment.author_name });
 	const [replyInputing, setReplyInputing] = useState(false);
 	const [replyText, setReplyText] = useState('');
-	const chat = useChat();
+	const { handleReply } = useReplyHandler();
 
 	const handleSubmitReply = async () => {
 		// if (!chat?.data?.composeMessage) {
@@ -182,12 +118,24 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 		// 	dispatchToastMessage({ type: 'error', message: error.message });
 		// }
 
-		handleReply({
+		const r = await handleReply({
 			topic: comment,
 			replyType: 'reply',
 			replyContent: replyText,
 		})
+		if (r) {
+			setReplyText('');
+			setReplyInputing(false);
+		}
 	};
+
+	const toggleReplyInputingState = () => {
+		setReplyInputing(!replyInputing)
+		if (!replyInputing) {
+			// 取消回复后, 清除回复内容
+			setReplyText('')
+		}
+	}
 
 	return (
 		<Box display="flex" flexDirection="column" marginBlock="x8">
@@ -213,21 +161,6 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 						<Box fontScale="p2" marginInlineStart="x8">{comment.u.name}</Box>
 					</Box>
 			}
-			{/* 引用消息内容 */}
-			{/* {firstAttachment?.text && (
-				<Box 
-					display="flex" 
-					flexDirection="column" 
-					marginBlock="x4" 
-					padding="x8" 
-					borderRadius="x4" 
-					backgroundColor="neutral-100"
-				>
-					<Box fontScale="c1" color="hint">
-						{firstAttachment.text}
-					</Box>
-				</Box>
-			)} */}
 			<Box marginBlock="x4">
 				{comment.md ? <MessageContentBody md={comment.md} /> : comment.msg}
 			</Box>
@@ -235,15 +168,7 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 				<Box fontScale="c1" color="hint" display="flex" alignItems="center">
 					{new Date(comment.ts).toLocaleString()}
 					<Box marginInline="x8" color="hint">·</Box>
-					{/* <Box
-						fontScale="c1"
-						color="hint"
-						style={{ cursor: 'pointer' }}
-						onClick={() => setReplyInputing(!replyInputing)}
-					>
-						{replyInputing ? '取消' : '回复'}
-					</Box> */}
-					<HintIconButton text={replyInputing ? '取消' : '回复'} onClick={() => setReplyInputing(!replyInputing)} />
+					<MyIconButton text={replyInputing ? '取消' : '回复'} onClick={toggleReplyInputingState} />
 				</Box>
 			</Box>
 			{replyInputing && (
@@ -265,31 +190,9 @@ const CommentMsgBox = ({ comment }: { comment: Comment }) => {
 	);
 };
 
-const TopicDetailPage = () => {
+const TopicDetailPageInner: React.FC<{ topicId: string, rid: string, topicType: TopicType }> = ({ topicId, rid, topicType }) => {
 	const t = useTranslation();
 	const router = useRouter();
-	const topicId = useRouteParameter('id');
-	let rid = useSearchParameter('rid');
-	const type = useSearchParameter('type');
-	// 使用 useGetMessageByID hook 获取消息
-	const getMessageByID = useGetMessageByID();
-	const { data: messageData } = useQuery({
-		queryKey: ['message', topicId],
-		queryFn: () => getMessageByID(topicId || ''),
-		enabled: !!topicId && !rid,
-	});
-
-	// 从 messageData 获取 rid
-	if (messageData?.rid) {
-		rid = messageData.rid;
-	}
-
-	if (!topicId) {
-		router.navigate({
-			name: 'topics-index',
-		});
-		return null;
-	}
 	const dispatchToastMessage = useToastMessageDispatch();
 	const queryClient = useQueryClient();
 	const formatTime = useTimeAgo();
@@ -315,12 +218,15 @@ const TopicDetailPage = () => {
 	const limit = COMMENTS_PER_PAGE;
 	const forceUpdate = useForceUpdate();
 
+	// 使用自定义Hook处理回复
+	const { handleReply } = useReplyHandler();
+
 	// 获取话题详情的接口
 	const getTopicDetail = useEndpoint('GET', '/v1/topics.discussion.detail');
 
 	// 获取话题详情
 	const queryKey = ['topic', topicId, rid, currPageOffset1, currPageOffset2, direction, limit, lastUpdate];
-	const { data: topic, isLoading, refetch } = useQuery({
+	const { data: topic, isLoading, refetch, error } = useQuery({
 		queryKey,
 		queryFn: async () => {
 			if (!rid) {
@@ -333,18 +239,20 @@ const TopicDetailPage = () => {
 				offset2: currPageOffset2 || undefined,
 				direction,
 				limit: limit,
-				type,
+				type: topicType,
 			});
 			return result;
 		},
 		enabled: !!topicId && !!rid,
+		meta: {
+			apiErrorToastMessage: true, // 使用Rocket.Chat内置的错误处理
+		},
 	});
 
 	useEffect(() => {
 		setLocalTopic(topic);
 	}, [topic]);
 
-	const chat = useChat();
 	// 发表评论的mutation
 	const { mutate: submitComment } = useMutation({
 		mutationFn: async (text: string) => {
@@ -372,10 +280,6 @@ const TopicDetailPage = () => {
 		},
 		onSuccess: () => {
 			setNewComment('');
-			queryClient.invalidateQueries({
-				queryKey: ['topic', topicId],
-			});
-			dispatchToastMessage({ type: 'success', message: '评论成功' });
 		},
 		onError: (error) => {
 			dispatchToastMessage({ type: 'error', message: error.message });
@@ -461,7 +365,6 @@ const TopicDetailPage = () => {
 
 	// 处理加载更多回复 - 使用响应式缓存更新
 	const handleLoadMoreReplies = async (comment: any, type: 'topic' | 'comment') => {
-		debugger;
 		if (!comment.reply) {
 			comment.reply = {
 				list: [],
@@ -489,9 +392,9 @@ const TopicDetailPage = () => {
 			show: true,
 		}
 		forceUpdate();
-		setTimeout(() => {
-			console.log("==handleLoadMoreReplies", localTopic, topic)
-		})
+		// setTimeout(() => {
+		// 	console.log("==handleLoadMoreReplies", localTopic, topic)
+		// })
 	};
 
 	// 处理收起回复 - 使用响应式缓存更新
@@ -518,6 +421,156 @@ const TopicDetailPage = () => {
 		);
 	}
 
+	return <Page>
+		<PageHeader
+			title={localTopic?.title}
+			{...(!document.referrer ? {} : { onClickBack: () => router.navigate(-1) })}
+		>
+			<MyIconButton data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
+				<Icon name='refresh' size='x16' marginInlineEnd={4} />
+				{t('Refresh')}
+			</MyIconButton>
+		</PageHeader>
+		<PageContent>
+			<Box
+				display="flex"
+				flexDirection="column"
+				height="calc(100vh - 64px)"
+				overflowY="auto"
+			>
+				<Margins block="x16">
+					{/* 话题基本信息 */}
+					<Box display="flex" flexDirection="column" marginBlock="x8">
+						<Box display="flex" alignItems="center" marginBlock="x8">
+							<Avatar size="x40" url={`/avatar/${localTopic?.u?.name}`} />
+							<Box>
+								<Box fontScale="h4">{localTopic?.u?.name}</Box>
+								<Box fontScale="c1" color="hint">
+									{new Date(localTopic?.ts).toLocaleString()}
+								</Box>
+							</Box>
+						</Box>
+						{localTopic?.hasReply && ((localTopic.reply?.show) ? (
+							<>
+								<MyIconButton preIcon="chevron-up" onClick={() => handleCollapseReplies(localTopic)}>
+									{'收起回复'}
+								</MyIconButton >
+								<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
+									{localTopic.reply?.list?.map((reply: Comment) => (
+										<CommentMsgBox key={reply._id} comment={reply} />
+									))}
+									{localTopic.reply?.hasMore && (
+										<MyIconButton small preIcon="chevron-down" onClick={() => handleLoadMoreReplies(localTopic, 'topic')}>
+											{'加载更多'}
+										</MyIconButton>
+									)}
+								</Box>
+							</>
+						) : (
+							<MyIconButton small preIcon="thread" onClick={() => handleLoadMoreReplies(localTopic, 'topic')}>
+								{'展开回复'}
+							</MyIconButton>
+						))}
+					</Box>
+
+					<Divider />
+
+					{/* 评论列表 */}
+					<Box display="flex" flexDirection="column" marginBlock="x16">
+						<Box fontScale="h4">{'评论'}</Box>
+						{localTopic?.comments?.map((comment: Comment) => (
+							<Box key={comment._id} display="flex" flexDirection="column" marginBlock="x8">
+								<CommentMsgBox comment={comment} />
+								{/* tlm 非空, 则说明这是个讨论串的头消息, 显示"展开回复", 点击加载 */
+									(comment.tlm || comment.qlm) && (
+										<Box>
+											{comment.reply?.show ? (
+												<>
+													<MyIconButton small preIcon="chevron-up" onClick={() => handleCollapseReplies(comment)}>
+														{'收起回复'}
+													</MyIconButton>
+													<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
+														{comment.reply?.list?.map((reply: Comment) => (
+															<CommentMsgBox key={reply._id} comment={reply} />
+														))}
+														{comment.reply?.hasMore && (
+															<MyIconButton small preIcon="chevron-down" onClick={() => handleLoadMoreReplies(comment, 'comment')}>
+																{'加载更多'}
+															</MyIconButton>
+														)}
+													</Box>
+												</>
+											) : (
+												<MyIconButton small preIcon="thread" onClick={() => handleLoadMoreReplies(comment, 'comment')}>
+													{'展开回复'}
+												</MyIconButton>
+											)}
+										</Box>
+									)}
+							</Box>
+						))}
+					</Box>
+
+					{/* 发表评论区域 */}
+					<Box display="flex" flexDirection="column" marginBlock="x8">
+						<TextAreaInput
+							value={newComment}
+							onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewComment(e.currentTarget.value)}
+							placeholder={'撰写评论'}
+							rows={3}
+						/>
+						<Box display="flex" justifyContent="flex-end">
+							<Button primary onClick={handleSubmitComment}>
+								{'发表评论'}
+							</Button>
+						</Box>
+					</Box>
+
+					{/* 分页 */}
+					<Box display="flex" marginBlock="x8">
+						<Button onClick={handleFirstPage}>
+							首页
+						</Button>
+						<Button onClick={handlePrevPage}>
+							前页
+						</Button>
+						<Button onClick={handleNextPage}>
+							后页
+						</Button>
+					</Box>
+				</Margins>
+			</Box>
+		</PageContent>
+	</Page>
+};
+
+const TopicDetailPage = () => {
+	const t = useTranslation();
+	const router = useRouter();
+	const topicId = useRouteParameter('id') as string;
+	let rid = useSearchParameter('rid');
+	const type = useSearchParameter('type') as TopicType;
+	// 使用 useGetMessageByID hook 获取消息
+	const getMessageByID = useGetMessageByID();
+	const { data: messageData } = useQuery({
+		queryKey: ['message', topicId],
+		queryFn: () => getMessageByID(topicId || ''),
+		enabled: !!topicId && !rid,
+	});
+
+	// 从 messageData 获取 rid
+	if (messageData?.rid) {
+		rid = messageData.rid;
+	}
+
+	if (!topicId) {
+		router.navigate({
+			name: 'topics-index',
+		});
+		return null;
+	}
+
+
 	if (!rid) {
 		return null;
 	}
@@ -525,127 +578,7 @@ const TopicDetailPage = () => {
 	return (
 		<RoomProvider rid={rid}>
 			<ChatProvider>
-				<Page>
-					<PageHeader
-						title={localTopic?.title}
-						{...(!document.referrer ? {} : { onClickBack: () => router.navigate(-1) })}
-					>
-						<Box data-qa='current-chats-options-clearFilters' onClick={handleRefresh}>
-							<Icon name='refresh' size='x16' marginInlineEnd={4} />
-							{t('Refresh')}
-						</Box>
-					</PageHeader>
-					<PageContent>
-						<Box
-							display="flex"
-							flexDirection="column"
-							height="calc(100vh - 64px)"
-							overflowY="auto"
-						>
-							<Margins block="x16">
-								{/* 话题基本信息 */}
-								<Box display="flex" flexDirection="column" marginBlock="x8">
-									<Box display="flex" alignItems="center" marginBlock="x8">
-										<Avatar size="x40" url={`/avatar/${localTopic?.u?.name}`} />
-										<Box>
-											<Box fontScale="h4">{localTopic?.u?.name}</Box>
-											<Box fontScale="c1" color="hint">
-												{new Date(localTopic?.ts).toLocaleString()}
-											</Box>
-										</Box>
-									</Box>
-									{localTopic?.hasReply && ((localTopic.reply?.show) ? (
-										<>
-											<HintIconButton preIcon="chevron-up" onClick={() => handleCollapseReplies(localTopic)}>
-												{'收起回复'}
-											</HintIconButton >
-											<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
-												{localTopic.reply?.list?.map((reply: Comment) => (
-													<CommentMsgBox key={reply._id} comment={reply} />
-												))}
-												{localTopic.reply?.hasMore && (
-													<HintIconButton small preIcon="chevron-down" onClick={() => handleLoadMoreReplies(localTopic, 'topic')}>
-														{'加载更多'}
-													</HintIconButton>
-												)}
-											</Box>
-										</>
-									) : (
-										<HintIconButton small preIcon="thread" onClick={() => handleLoadMoreReplies(localTopic, 'topic')}>
-											{'展开回复'}
-										</HintIconButton>
-									))}
-								</Box>
-
-								<Divider />
-
-								{/* 评论列表 */}
-								<Box display="flex" flexDirection="column" marginBlock="x16">
-									<Box fontScale="h4">{'评论'}</Box>
-									{localTopic?.comments?.map((comment: Comment) => (
-										<Box key={comment._id} display="flex" flexDirection="column" marginBlock="x8">
-											<CommentMsgBox comment={comment} />
-											{/* tlm 非空, 则说明这是个讨论串的头消息, 显示"展开回复", 点击加载 */
-												(comment.tlm || comment.qlm) && (
-													<Box>
-														{comment.reply?.show ? (
-															<>
-																<HintIconButton small preIcon="chevron-up" onClick={() => handleCollapseReplies(comment)}>
-																	{'收起回复'}
-																</HintIconButton>
-																<Box mi="x32" display="flex" flexDirection="column" marginBlock="x8">
-																	{comment.reply?.list?.map((reply: Comment) => (
-																		<CommentMsgBox key={reply._id} comment={reply} />
-																	))}
-																	{comment.reply?.hasMore && (
-																		<HintIconButton small preIcon="chevron-down" onClick={() => handleLoadMoreReplies(comment, 'comment')}>
-																			{'加载更多'}
-																		</HintIconButton>
-																	)}
-																</Box>
-															</>
-														) : (
-															<HintIconButton small preIcon="thread" onClick={() => handleLoadMoreReplies(comment, 'comment')}>
-																{'展开回复'}
-															</HintIconButton>
-														)}
-													</Box>
-												)}
-										</Box>
-									))}
-								</Box>
-
-								{/* 发表评论区域 */}
-								<Box display="flex" flexDirection="column" marginBlock="x8">
-									<TextAreaInput
-										value={newComment}
-										onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewComment(e.currentTarget.value)}
-										placeholder={'撰写评论'}
-										rows={3}
-									/>
-									<Box display="flex" justifyContent="flex-end">
-										<Button primary onClick={handleSubmitComment}>
-											{'发表评论'}
-										</Button>
-									</Box>
-								</Box>
-
-								{/* 分页 */}
-								<Box display="flex" marginBlock="x8">
-									<Button onClick={handleFirstPage}>
-										首页
-									</Button>
-									<Button onClick={handlePrevPage}>
-										前页
-									</Button>
-									<Button onClick={handleNextPage}>
-										后页
-									</Button>
-								</Box>
-							</Margins>
-						</Box>
-					</PageContent>
-				</Page>
+				<TopicDetailPageInner {...{ topicId, rid, topicType: type }} />
 			</ChatProvider>
 		</RoomProvider>
 	);

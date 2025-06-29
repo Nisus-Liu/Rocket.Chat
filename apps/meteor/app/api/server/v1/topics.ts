@@ -7,6 +7,9 @@ import { API } from '../api';
 import { getPaginationItems } from '../helpers/getPaginationItems';
 import { executeSendMessage } from '../../../lib/server/methods/sendMessage';
 import type { PageMoreData, Comment, TopicDetail } from '@rocket.chat/core-typings';
+import { truncate } from '/lib/utils/stringUtils';
+import { api } from '@rocket.chat/core-services';
+import { i18n } from '../../../../server/lib/i18n';
 
 declare module '@rocket.chat/rest-typings' {
 	// eslint-disable-next-line @typescript-eslint/naming-convention
@@ -114,6 +117,32 @@ async function getUserRoomIds(userId: string): Promise<string[]> {
 	return userSubscriptions.map((sub) => sub.rid);
 }
 
+// Helper function to check room access with ephemeral notification
+async function checkRoomAccess(userId: string, roomId: string, method: string): Promise<boolean> {
+	const roomIds = await getUserRoomIds(userId);
+	
+	if (!roomIds.includes(roomId)) {
+		// Send ephemeral message to user  聊天窗口中会看到消息提示
+		// const user = await Meteor.userAsync();
+		// if (user) {
+		// 	void api.broadcast('notify.ephemeralMessage', userId, roomId, {
+		// 		msg: i18n.t('error-not-allowed', {
+		// 			lng: (user as any).language || 'en',
+		// 			postProcess: 'sprintf',
+		// 			sprintf: ['View topic'],
+		// 		}),
+		// 	});
+		// }
+		
+		throw new Meteor.Error('error-not-allowed', '', {
+			method,
+			action: 'View topic',
+		});
+	}
+	
+	return true;
+}
+
 // Helper function to get topics with pagination and sort
 async function getTopics(roomIds: string[], offset: number, count: number, sort: any) {
 	const topics = await Messages.find(
@@ -186,7 +215,7 @@ API.v1.addRoute(
 		async get() {
 			console.log('==topics.list', this.queryParams);
 			const { offset, count } = await getPaginationItems(this.queryParams);
-			const { sort } = this.parseJsonQuery();
+			const { sort } = await this.parseJsonQuery();
 
 			const user = await Meteor.userAsync();
 			console.log('==user', user);
@@ -215,7 +244,7 @@ API.v1.addRoute(
 	{
 		async get() {
 			const { offset, count } = await getPaginationItems(this.queryParams);
-			const { sort } = this.parseJsonQuery();
+			const { sort } = await this.parseJsonQuery();
 
 			const user = await Meteor.userAsync();
 			if (!user) {
@@ -261,7 +290,10 @@ API.v1.addRoute(
 			});
 
 			if (!topic) {
-				throw new Meteor.Error('error-invalid-topic', 'Invalid topic');
+				throw new Meteor.Error('error-invalid-topic', 'Topic not found', {
+					method: 'topics.get',
+					topicId,
+				});
 			}
 
 			return API.v1.success({
@@ -278,7 +310,7 @@ API.v1.addRoute(
 		async get() {
 			console.log('==topics.discussion.list', this.queryParams);
 			const { offset, count } = await getPaginationItems(this.queryParams);
-			const { sort } = this.parseJsonQuery();
+			const { sort } = await this.parseJsonQuery();
 
 			const user = await Meteor.userAsync();
 			console.log('==user', user);
@@ -337,10 +369,11 @@ API.v1.addRoute(
 			}
 
 			const roomIds = await getUserRoomIds(user._id);
-			// 看是否在 roomIds 中, 不在则无权查看
-			if (!roomIds.includes(rid)) {
-				throw new Meteor.Error('error-no-permission-to-view-topic', 'No permission to view topic');
-			}
+            // 看是否在 roomIds 中, 不在则无权查看
+            // if (!roomIds.includes(rid)) {
+            //     throw new Meteor.Error('error-no-permission-to-view-topic', `No permission to view topic of rid ${rid}; ${truncate(roomIds.toString(), 80)}, uid: ${user._id}`);
+            // }
+			await checkRoomAccess(user._id, rid, 'topics.discussion.detail');
 
 			const getTopicInfo = async (type: string) => {
 				const topicInfo: any = { type };
@@ -351,13 +384,19 @@ API.v1.addRoute(
 							_id: rid,
 						});
 						if (!topicRoom) {
-							throw new Meteor.Error('error-invalid-topic', `Invalid topic: ${topicId}`);
+							throw new Meteor.Error('error-invalid-topic', 'Topic not found', {
+								method: 'topics.discussion.detail',
+								topicId,
+							});
 						}
 						leaderMessage = await Messages.findOne({
 							drid: topicId,
 						});
 						if (!leaderMessage) {
-							throw new Meteor.Error('error-invalid-topic', `Invalid topic: ${topicId}`);
+							throw new Meteor.Error('error-invalid-topic', 'Topic not found', {
+								method: 'topics.discussion.detail',
+								topicId,
+							});
 						}
 						topicInfo.rid = topicRoom._id;
 						topicInfo.title = topicRoom.fname;
@@ -371,7 +410,10 @@ API.v1.addRoute(
 							_id: topicId,
 						});
 						if (!leaderMessage) {
-							throw new Meteor.Error('error-invalid-topic', `Invalid topic: ${topicId}`);
+							throw new Meteor.Error('error-invalid-topic', 'Topic not found', {
+								method: 'topics.discussion.detail',
+								topicId,
+							});
 						}
 						topicInfo.rid = leaderMessage.rid;
 						topicInfo.title = leaderMessage.msg;
@@ -437,7 +479,10 @@ API.v1.addRoute(
 					case 'quote':
 						return await buildCommentsQuery4Quote(topicInfo);
 					default:
-						throw new Meteor.Error('error-invalid-type', `Invalid type: '${type}'`);
+						throw new Meteor.Error('error-invalid-arguments', 'Invalid type parameter', {
+							method: 'topics.discussion.detail',
+							type,
+						});
 				}
 			}
 
@@ -567,7 +612,10 @@ API.v1.addRoute(
 			});
 
 			if (!topic) {
-				throw new Meteor.Error('error-invalid-topic', 'Invalid topic');
+				throw new Meteor.Error('error-invalid-topic', 'Topic not found', {
+					method: 'topics.discussion.comment',
+					topicId,
+				});
 			}
 
 			// 使用 executeSendMessage 发送消息
@@ -665,7 +713,7 @@ API.v1.addRoute(
 			}
 
 			// 获取讨论消息
-			const query = {
+			const query: any = {
 				rid: { $in: roomIds },
 				// attachments 为空
 				// attachments: { $exists: false },
@@ -683,7 +731,9 @@ API.v1.addRoute(
 				// 引用串
 				query.qmid = commentId;
 			} else {
-				throw new Meteor.Error('error-invalid-argument', 'Invalid argument');
+				throw new Meteor.Error('error-invalid-arguments', 'Invalid arguments: tlm or qlm must be provided', {
+					method: 'topics.discussion.replies',
+				});
 			}
 
 			if (offset) {
